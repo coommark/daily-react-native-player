@@ -15,13 +15,74 @@ Non-negotiable for v0.1 / Bible-ready release — required by
 - Remotes delivered to JS via `registerPlaybackService`
 - `updateOptions` re-applied after `reset()` so remotes / notification config stay alive
 
-## Implementation notes (planned)
+## Config plugin (T2 — done)
 
-- Android: `MediaSessionService` + unique session id per process
-- iOS: `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter`
-- Config plugin injects permissions / service / background modes for Expo prebuild hosts
-- Synchronous `startForeground` within OS deadline when started as FGS
+CNG / Expo prebuild hosts add:
+
+```json
+{
+  "expo": {
+    "plugins": ["daily-react-native-player"]
+  }
+}
+```
+
+Optional escape hatch: `{ "enableBackgroundPlayback": false }` skips iOS audio mode, Android FGS permissions, and the service declaration.
+
+### Ownership
+
+| Concern | Owner |
+| --- | --- |
+| `PlaybackService` Kotlin class + Media3 deps | Library AAR |
+| `<service>` + FGS / `POST_NOTIFICATIONS` permissions | Config plugin (app manifest) |
+| `UIBackgroundModes: audio` | Config plugin (Info.plist) |
+| Library `AndroidManifest.xml` | Empty of FGS/service (avoids unwanted merge into every consumer) |
+
+`UIBackgroundModes: audio` alone does **not** play audio in background until the player sets an appropriate `AVAudioSession` category (T3/T4).
+
+### Runtime host duties
+
+- On Android 13+, **request `POST_NOTIFICATIONS` at runtime** before expecting a visible media notification (plugin only *declares* the permission; T4 shows the notification).
+- Do not run a second focus-owning media session / FGS for the same playback role.
+
+### Bare workflow (no CNG)
+
+Apply the same Info.plist / AndroidManifest entries manually:
+
+**iOS Info.plist**
+
+```xml
+<key>UIBackgroundModes</key>
+<array>
+  <string>audio</string>
+</array>
+```
+
+**AndroidManifest.xml** (inside `<manifest>` / `<application>`)
+
+```xml
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+<service
+  android:name="expo.modules.dailyreactnativeplayer.PlaybackService"
+  android:exported="true"
+  android:foregroundServiceType="mediaPlayback"
+  android:stopWithTask="false">
+  <intent-filter>
+    <action android:name="androidx.media3.session.MediaSessionService" />
+  </intent-filter>
+</service>
+```
+
+## Implementation notes
+
+- Android: `MediaSessionService` stub with unique session id per process (ADR 4); real remotes / FGS start = T4
+- iOS: `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` = T4
+- Synchronous `startForeground` within OS deadline when started as FGS = T4
 
 ## QA
 
 Emulator audio is weak signal. Physical Android (incl. low-end) + physical iOS required before calling T4/T5 done.
+After example `npx expo prebuild`, run `yarn assert:prebuild` from the repo root to verify injected modes / FGS / service.

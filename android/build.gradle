@@ -6,13 +6,21 @@ plugins {
 group = 'expo.modules.dailyreactnativeplayer'
 version = '0.1.0'
 
+def media3Version = '1.5.1'
+
 android {
   namespace "expo.modules.dailyreactnativeplayer"
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    consumerProguardFiles 'consumer-rules.pro'
   }
   lintOptions {
     abortOnError false
   }
+}
+
+dependencies {
+  implementation "androidx.media3:media3-exoplayer:$media3Version"
+  implementation "androidx.media3:media3-session:$media3Version"
 }

@@ -27,13 +27,16 @@ export default function App() {
           }>
           App Store
         </Text>
-        <Group name="Constants">
+        <Text style={styles.scaffoldNote}>
+          Scaffold smoke (temporary — replaced in T3). Not the product Player API.
+        </Text>
+        <Group name="Constants (scaffold)">
           <Text>{DailyReactNativePlayer.PI}</Text>
         </Group>
-        <Group name="Functions">
+        <Group name="Functions (scaffold)">
           <Text>{DailyReactNativePlayer.hello()}</Text>
         </Group>
-        <Group name="Async functions">
+        <Group name="Async functions (scaffold)">
           <Button
             title="Set value"
             onPress={async () => {
@@ -41,7 +44,7 @@ export default function App() {
             }}
           />
         </Group>
-        <Group name="Events">
+        <Group name="Events (scaffold)">
           <Text>{onChangePayload?.value}</Text>
         </Group>
       </ScrollView>
@@ -70,6 +73,13 @@ const styles = {
   },
   groupHeader: { fontSize: 20, marginBottom: 20 },
   group: { margin: 20, backgroundColor: '#fff', borderRadius: 10, padding: 20 },
+  scaffoldNote: {
+    fontSize: 14,
+    marginHorizontal: 20,
+    marginTop: 16,
+    color: '#666',
+    fontStyle: 'italic' as const,
+  },
   container: { flex: 1, backgroundColor: '#eee' },
   view: { flex: 1, height: 200 },
 };

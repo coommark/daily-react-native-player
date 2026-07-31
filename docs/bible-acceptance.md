@@ -58,7 +58,7 @@ Keep contract tests aligned with this list.
 
 ## Sources
 
-- [ ] Local file URLs (WAV)
+- [ ] Local / remote progressive URLs: WAV, mp3, m4a (AAC), plus other codecs Media3 / AVFoundation decode (T3)
 - [ ] HLS (`TrackType.HLS` / `'hls'`)
 - [ ] Seek-after-ready for HLS
 

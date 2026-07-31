@@ -22,5 +22,9 @@ jobs:
         run: yarn typecheck
       - name: Test
         run: yarn test
+      - name: Test plugin
+        run: yarn test plugin
       - name: Build
         run: yarn build
+      - name: Pack check
+        run: yarn pack:check

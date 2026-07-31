@@ -1,16 +1,40 @@
 {
   "name": "daily-react-native-player",
   "version": "0.1.0",
-  "description": "Expo-first background audio player for React Native (New Architecture), built primarily for Daily Bible - Offline & Audio. Queue, HLS, lock-screen controls, silence tracks, and optional ambient dual-audio.",
+  "description": "Expo-first background audio for React Native (New Architecture only). Lock-screen & notification remotes, now-playing metadata, speech queue, WAV/mp3/m4a + HLS, native silence tracks, optional ambient dual-audio. MIT. Built for Daily Bible.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "default": "./build/index.js"
+    },
+    "./app.plugin": "./app.plugin.js",
+    "./app.plugin.js": "./app.plugin.js"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "build",
+    "android",
+    "ios",
+    "expo-module.config.json",
+    "app.plugin.js",
+    "plugin/build",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "node internal/module_scripts/build.js",
     "clean": "node internal/module_scripts/clean.js",
-    "lint": "eslint src/",
+    "lint": "eslint src/ plugin/src/",
     "test": "CI=1 node internal/module_scripts/test.js",
     "test:watch": "node internal/module_scripts/test.js",
     "typecheck": "tsc --noEmit",
+    "pack:check": "node internal/module_scripts/pack-check.js",
+    "assert:prebuild": "node internal/module_scripts/assert-prebuild.js",
     "prepare": "node internal/module_scripts/prepare.js",
     "open:ios": "node internal/module_scripts/open-ios.js",
     "open:android": "node internal/module_scripts/open-android.js"
@@ -18,12 +42,32 @@
   "keywords": [
     "react-native",
     "expo",
+    "expo-module",
     "audio",
     "player",
     "background-audio",
+    "background-playback",
+    "lock-screen",
+    "notification",
+    "now-playing",
     "media-session",
+    "mediasession",
+    "queue",
     "hls",
+    "mp3",
+    "m4a",
+    "wav",
+    "streaming",
+    "silence",
+    "ambient",
+    "dual-audio",
+    "speech",
+    "narration",
+    "podcast",
+    "bible",
     "daily-bible",
+    "new-architecture",
+    "mit",
     "DailyReactNativePlayer"
   ],
   "repository": {
@@ -63,8 +107,13 @@
     ]
   },
   "peerDependencies": {
-    "expo": "*",
+    "expo": ">=53.0.0",
     "react": "*",
-    "react-native": "*"
+    "react-native": ">=0.79.0"
+  },
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    }
   }
 }

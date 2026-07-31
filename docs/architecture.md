@@ -31,14 +31,14 @@ example app → JS Player / Silence / Ambient(opt) → Expo Module
 | 6 | Silence = first-class queue items; native-owned sources |
 | 7 | Ambient consumer-opt-in + lazy; required for Bible-ready 0.1.0 |
 | 8 | P0 background / metadata gates v0.1 device QA |
-| 9 | HLS only in v0.1 |
+| 9 | Progressive WAV/mp3/m4a (+ platform codecs) from T3; HLS streaming only (no DASH/SS) in v0.1 |
 | 10 | Peers: Expo 53+ / RN 0.79+ / New Arch only |
 | 11 | Playback rate limits are app policy; player supports general `setRate` |
 
 ## Layers
 
 - **JS:** imperative API, events, silence helpers, optional ambient facade
-- **Config plugin:** iOS `audio` background mode; Android FGS + service declaration
+- **Config plugin (T2):** plugin-owned iOS `UIBackgroundModes: audio` + Android FGS permissions + `PlaybackService` declaration in the *app* manifest (`createRunOncePlugin`, `enableBackgroundPlayback` escape hatch). Library AAR owns the Kotlin `PlaybackService` class and pinned Media3 deps; library manifest stays free of FGS/service. Stub session id: `daily-react-native-player:<packageName>` (ADR 4). No auto-start / FGS until T4.
 - **Native:** long-lived media service / session; speech focus owner; ambient never requests focus
 
 Detail expands as tickets land. See also `docs/background-playback.md` and `docs/dual-audio.md`.

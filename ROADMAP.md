@@ -20,8 +20,8 @@ Acceptance surface: [`docs/bible-acceptance.md`](./docs/bible-acceptance.md).
 | --- | --- | --- | --- |
 | T0 | — | Foundation: git, cursorrules, docs, LICENSE, skills, `.reference` | done |
 | T1 | — | Scaffold Expo module + example (New Arch) + CI + contract-test skeleton | done |
-| T2 | P0 | Config plugin: iOS audio BG + Android FGS / MediaSessionService | pending |
-| T3 | — | Local speech play / pause / seek | pending |
+| T2 | P0 | Config plugin: iOS audio BG + Android FGS / MediaSessionService | done |
+| T3 | — | Progressive formats (WAV, mp3/m4a, platform codecs) + play / pause / seek | pending |
 | T4 | P0 | MediaSession + Now Playing + remotes + metadata + ContinuePlayback | pending |
 | T5 | P0 | `registerPlaybackService` + remote → JS bridge | pending |
 | T6 | P1 | Queue API + events (Bible matrix) | pending |
