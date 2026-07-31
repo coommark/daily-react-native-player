@@ -1,5 +1,5 @@
 {
-  "name": "my-module-example",
+  "name": "daily-react-native-player-example",
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {

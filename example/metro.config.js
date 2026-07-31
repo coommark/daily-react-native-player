@@ -20,7 +20,7 @@ config.resolver.nodeModulesPaths = [
 ];
 
 config.resolver.extraNodeModules = {
-  'my-module': '..',
+  'daily-react-native-player': '..',
 };
 
 config.watchFolders = [path.resolve(__dirname, '..')];

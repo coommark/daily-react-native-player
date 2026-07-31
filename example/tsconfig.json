@@ -3,8 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "my-module": ["../src/index"],
-      "my-module/*": ["../src/*"]
+      "daily-react-native-player": ["../src/index"],
+      "daily-react-native-player/*": ["../src/*"]
     }
   }
 }

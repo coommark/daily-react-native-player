@@ -55,3 +55,10 @@ yarn-error.log
 
 # Expo
 .expo/*
+
+# Private study checkouts (never commit)
+.reference/
+
+# Agent / local tooling
+.cursor/
+*.canvas.tsx

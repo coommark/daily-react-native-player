@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "my-module-example",
-    "slug": "my-module-example",
+    "name": "Daily React Native Player Example",
+    "slug": "daily-react-native-player-example",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "expo.modules.dailyreactnativeplayer.example"

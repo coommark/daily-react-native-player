@@ -6,7 +6,7 @@ module.exports = async (env, argv) => {
     {
       ...env,
       babel: {
-        dangerouslyAddModulePathsToTranspile: ['my-module'],
+        dangerouslyAddModulePathsToTranspile: ['daily-react-native-player'],
       },
     },
     argv
