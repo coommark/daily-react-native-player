@@ -23,6 +23,11 @@ config.resolver.extraNodeModules = {
   'daily-react-native-player': '..',
 };
 
+// Ensure local progressive audio fixtures resolve as assets.
+config.resolver.assetExts = Array.from(
+  new Set([...(config.resolver.assetExts ?? []), 'wav', 'mp3', 'm4a'])
+);
+
 config.watchFolders = [path.resolve(__dirname, '..')];
 
 config.transformer.getTransformOptions = async () => ({

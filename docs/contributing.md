@@ -31,7 +31,7 @@ yarn start
 Import the package as consumers will:
 
 ```ts
-import Player from 'daily-react-native-player';
+import { setupPlayer, add, play } from 'daily-react-native-player';
 ```
 
 ## Skills

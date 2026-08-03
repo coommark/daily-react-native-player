@@ -10,20 +10,29 @@ import {
 } from 'daily-react-native-player';
 import { useEffect, useState } from 'react';
 import {
-  Button,
   Image,
   Linking,
+  Pressable,
   SafeAreaView,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
 
-// Stable short progressive sample (Internet Archive — public domain recording excerpt).
-const REMOTE_MP3 =
-  'https://archive.org/download/testmp3testfile/mpthreetest.mp3';
+const localWav = Image.resolveAssetSource(require('./assets/hynm.wav'));
+const localMp3 = Image.resolveAssetSource(require('./assets/instrumentals.mp3'));
 
-const localWav = Image.resolveAssetSource(require('./assets/sample.wav'));
+function requireAssetUri(
+  asset: { uri?: string } | null | undefined,
+  label: string
+): string {
+  const url = asset?.uri;
+  if (!url) {
+    throw new Error(`${label} asset failed to resolve`);
+  }
+  return url;
+}
 
 export default function App() {
   const [state, setState] = useState('none');
@@ -82,7 +91,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.container}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.header}>daily-react-native-player</Text>
         <Text style={styles.subHeader}>
           Built primarily for Daily Bible - Offline & Audio
@@ -107,9 +116,9 @@ export default function App() {
         </Text>
 
         <Group name="Status">
-          <Text>setup: {ready ? 'ready' : '…'}</Text>
-          <Text>state: {state}</Text>
-          <Text>
+          <Text style={styles.statusLine}>setup: {ready ? 'ready' : '…'}</Text>
+          <Text style={styles.statusLine}>state: {state}</Text>
+          <Text style={styles.statusLine}>
             progress: {progress.position.toFixed(1)}s / {progress.duration.toFixed(1)}s
             (buf {progress.buffered.toFixed(1)}s)
           </Text>
@@ -117,58 +126,111 @@ export default function App() {
         </Group>
 
         <Group name="Load">
-          <Button
-            title="Load local WAV"
-            onPress={() =>
-              run(async () => {
-                const url = localWav?.uri;
-                if (!url) {
-                  throw new Error('Local WAV asset failed to resolve');
-                }
-                await add({ url, title: 'Sample WAV' });
-              })
-            }
-          />
-          <View style={styles.spacer} />
-          <Button
-            title="Load remote MP3"
-            onPress={() =>
-              run(async () => {
-                await add({ url: REMOTE_MP3, title: 'Remote MP3' });
-              })
-            }
-          />
+          <View style={styles.btnColumn}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  await add({
+                    url: requireAssetUri(localWav, 'WAV'),
+                    title: 'Hymn',
+                  });
+                })
+              }>
+              <Text style={styles.btnLabel}>Load WAV (hynm.wav)</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  await add({
+                    url: requireAssetUri(localMp3, 'MP3'),
+                    title: 'Instrumentals',
+                  });
+                })
+              }>
+              <Text style={styles.btnLabel}>Load MP3 (instrumentals.mp3)</Text>
+            </Pressable>
+          </View>
         </Group>
 
         <Group name="Transport">
-          <Button title="Play" onPress={() => run(() => play())} />
-          <View style={styles.spacer} />
-          <Button title="Pause" onPress={() => run(() => pause())} />
-          <View style={styles.spacer} />
-          <Button
-            title="Seek −10s"
-            onPress={() =>
-              run(async () => {
-                const p = await getProgress();
-                await seekTo(Math.max(0, p.position - 10));
-              })
-            }
-          />
-          <View style={styles.spacer} />
-          <Button
-            title="Seek +10s"
-            onPress={() =>
-              run(async () => {
-                const p = await getProgress();
-                const next = p.duration > 0 ? Math.min(p.duration, p.position + 10) : p.position + 10;
-                await seekTo(next);
-              })
-            }
-          />
-          <View style={styles.spacer} />
-          <Button title="Seek 0" onPress={() => run(() => seekTo(0))} />
-          <View style={styles.spacer} />
-          <Button title="Reset" onPress={() => run(() => reset())} />
+          <View style={styles.btnColumn}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnPrimary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() => run(() => play())}>
+              <Text style={[styles.btnLabel, styles.btnLabelPrimary]}>Play</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() => run(() => pause())}>
+              <Text style={styles.btnLabel}>Pause</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  const p = await getProgress();
+                  await seekTo(Math.max(0, p.position - 10));
+                })
+              }>
+              <Text style={styles.btnLabel}>Seek −10s</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  const p = await getProgress();
+                  const next =
+                    p.duration > 0 ? Math.min(p.duration, p.position + 10) : p.position + 10;
+                  await seekTo(next);
+                })
+              }>
+              <Text style={styles.btnLabel}>Seek +10s</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() => run(() => seekTo(0))}>
+              <Text style={styles.btnLabel}>Seek 0</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() => run(() => reset())}>
+              <Text style={styles.btnLabel}>Reset</Text>
+            </Pressable>
+          </View>
         </Group>
       </ScrollView>
     </SafeAreaView>
@@ -192,19 +254,84 @@ function Group(props: { name: string; children: React.ReactNode }) {
   );
 }
 
-const styles = {
-  header: { fontSize: 28, marginHorizontal: 20, marginTop: 20 },
-  subHeader: { fontSize: 16, marginHorizontal: 20, marginTop: 8, color: '#333' },
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F2F2F2',
+  },
+  content: {
+    paddingBottom: 32,
+  },
+  header: {
+    fontSize: 28,
+    fontWeight: '600',
+    marginHorizontal: 20,
+    marginTop: 20,
+    color: '#1A1A1A',
+  },
+  subHeader: {
+    fontSize: 15,
+    marginHorizontal: 20,
+    marginTop: 8,
+    color: '#555',
+    lineHeight: 22,
+  },
   link: {
-    fontSize: 16,
+    fontSize: 15,
     marginHorizontal: 20,
     marginTop: 6,
     color: '#0B57D0',
-    textDecorationLine: 'underline' as const,
+    textDecorationLine: 'underline',
   },
-  groupHeader: { fontSize: 20, marginBottom: 12 },
-  group: { margin: 20, backgroundColor: '#fff', borderRadius: 10, padding: 20 },
-  error: { color: '#B00020', marginTop: 8 },
-  spacer: { height: 8 },
-  container: { flex: 1, backgroundColor: '#eee' },
-};
+  group: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+  },
+  groupHeader: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#1A1A1A',
+  },
+  statusLine: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 4,
+    fontVariant: ['tabular-nums'],
+  },
+  error: {
+    color: '#B00020',
+    marginTop: 8,
+    fontSize: 14,
+  },
+  btnColumn: {
+    gap: 8,
+  },
+  btn: {
+    width: '100%',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  btnPrimary: {
+    backgroundColor: '#1A1A1A',
+  },
+  btnSecondary: {
+    backgroundColor: '#E8E8E8',
+  },
+  btnPressed: {
+    opacity: 0.7,
+  },
+  btnLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  btnLabelPrimary: {
+    color: '#FFFFFF',
+  },
+});

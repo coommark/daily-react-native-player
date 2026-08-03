@@ -14,7 +14,7 @@ Keep contract tests aligned with this list.
 
 ## Queue
 
-- [ ] `add` (append + insert at index)
+- [ ] `add` (append + insert at index) — T3 ships single-source `add` (replace current item); full queue semantics = T6
 - [ ] `remove`
 - [ ] `getQueue` / `getActiveTrack` / `getActiveTrackIndex`
 
