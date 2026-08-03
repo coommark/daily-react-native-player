@@ -67,17 +67,16 @@ Bed music under speech without crackle, without stealing audio focus, without hi
 
 ## Status
 
-**Pre-MVP / Day 1 scaffold.** The exported `hello` / `PI` / `setValueAsync` symbols are temporary linking smoke — not the product Player API (see [`docs/api.md`](./docs/api.md)). The roadmap below is what we are shipping toward, in ticket order.
+**T3 progressive transport landed.** Named Player API: `setupPlayer` / `add` / `play` / `pause` / `seekTo` / progress & state. Background remotes remain T4+.
 
 | Area | Status |
 | --- | --- |
-| Expo module + example app | Scaffolded (stub smoke only) |
+| Expo module + example app | Done (New Arch) |
 | Config plugin (iOS audio BG + Android FGS) | Done (T2) |
+| Local WAV + progressive mp3 / m4a | Done (T3) |
 | Background / lock-screen / notification controls | Planned (P0 / T4–T5) |
-| Queue + events | Planned |
-| Silence tracks | Planned (core) |
-| Local WAV | Planned (T3) |
-| Progressive mp3 / m4a (+ other platform progressive codecs) | Planned (T3) |
+| Queue + events | Planned (T6) |
+| Silence tracks | Planned (core / T7) |
 | HLS | Planned (T9; seek-after-ready) |
 | Ambient dual-audio | Planned (opt-in; required for Bible-ready 0.1.0) |
 
@@ -103,8 +102,8 @@ See [`ROADMAP.md`](./ROADMAP.md). Star the repo and watch releases if you want t
 ## Requirements
 
 - **New Architecture** (`newArchEnabled: true`)
-- Expo SDK **53+** / React Native **0.79+** (primary host: Daily Bible - Offline & Audio)
-- iOS + Android
+- **Expo SDK 53+** (Expo Modules Core required) / React Native **0.79+** (primary host: Daily Bible - Offline & Audio)
+- iOS + Android (web transport unsupported)
 
 ---
 
@@ -115,7 +114,7 @@ npx expo install daily-react-native-player
 ```
 
 ```ts
-import Player from 'daily-react-native-player';
+import { setupPlayer, add, play } from 'daily-react-native-player';
 ```
 
 Add the config plugin so prebuild injects iOS `audio` background mode and Android media foreground-service permissions / `MediaSessionService`:
@@ -137,6 +136,7 @@ Optional: `{ "enableBackgroundPlayback": false }` disables those injections. See
 ```bash
 yarn
 yarn build
+# while editing the package TS: npx tsc --watch
 cd example
 yarn start
 ```

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * Assert npm pack contents match the publish allow/deny lists.
- * Must include native + build artifacts; must exclude example/agent noise.
+ * Must include native + build + plugin artifacts; must exclude example/agent noise.
+ * Also asserts package.json / podspec / gradle version lockstep.
  */
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 const root = process.cwd();
 
@@ -16,6 +16,8 @@ const MUST_INCLUDE = [
   'package/ios/',
   'package/expo-module.config.json',
   'package/LICENSE',
+  'package/app.plugin.js',
+  'package/plugin/build/',
 ];
 
 const MUST_EXCLUDE = [
@@ -26,9 +28,6 @@ const MUST_EXCLUDE = [
   'package/AGENTS.md',
   'package/.cursorrules',
 ];
-
-// Plugin artifacts required after T2 scaffold (optional until present)
-const PLUGIN_OPTIONAL_UNTIL_PRESENT = ['app.plugin.js', 'plugin/build'];
 
 function listPackedFiles() {
   // --ignore-scripts avoids prepare printing "Building plugin" into stdout
@@ -74,19 +73,48 @@ function hasPrefix(files, prefix) {
   return files.some((f) => f === prefix || f.startsWith(prefix));
 }
 
-function hasExactOrFile(files, needle) {
-  if (needle.endsWith('/')) {
-    return hasPrefix(files, needle);
+function assertVersionLockstep(errors) {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const pkgVersion = pkg.version;
+
+  const podspec = fs.readFileSync(
+    path.join(root, 'ios', 'DailyReactNativePlayer.podspec'),
+    'utf8'
+  );
+  const podMatch = podspec.match(/s\.version\s*=\s*'([^']+)'/);
+  if (!podMatch) {
+    errors.push('could not parse s.version from ios/DailyReactNativePlayer.podspec');
+  } else if (podMatch[1] !== pkgVersion) {
+    errors.push(
+      `version mismatch: package.json (${pkgVersion}) != podspec (${podMatch[1]})`
+    );
   }
-  return files.includes(needle) || files.some((f) => f.endsWith('/' + path.basename(needle)) && f.includes(needle.replace(/^package\//, '')));
+
+  const gradle = fs.readFileSync(path.join(root, 'android', 'build.gradle'), 'utf8');
+  const gradleMatch = gradle.match(/versionName\s+"([^"]+)"/);
+  if (!gradleMatch) {
+    errors.push('could not parse versionName from android/build.gradle');
+  } else if (gradleMatch[1] !== pkgVersion) {
+    errors.push(
+      `version mismatch: package.json (${pkgVersion}) != android versionName (${gradleMatch[1]})`
+    );
+  }
+
+  const topVersion = gradle.match(/^version\s*=\s*'([^']+)'/m);
+  if (topVersion && topVersion[1] !== pkgVersion) {
+    errors.push(
+      `version mismatch: package.json (${pkgVersion}) != android build.gradle version (${topVersion[1]})`
+    );
+  }
 }
 
 const files = listPackedFiles();
 const errors = [];
 
+assertVersionLockstep(errors);
+
 for (const item of MUST_INCLUDE) {
   if (!hasPrefix(files, item) && !files.includes(item)) {
-    // also try without trailing slash for dirs
     const alt = item.endsWith('/') ? item.slice(0, -1) : item;
     const found =
       files.includes(item) ||
@@ -99,26 +127,9 @@ for (const item of MUST_INCLUDE) {
 }
 
 for (const item of MUST_EXCLUDE) {
-  const found = files.some(
-    (f) => f === item || f.startsWith(item) || f.includes('/' + item.replace(/^package\//, ''))
-  );
-  // tighter: only flag if path starts with the exclude prefix
   const starts = files.some((f) => f === item || f.startsWith(item));
   if (starts) {
     errors.push(`forbidden pack entry present: ${item}`);
-  }
-}
-
-// If plugin surface exists on disk, require it in the pack
-const pluginJs = path.join(root, 'app.plugin.js');
-const pluginBuild = path.join(root, 'plugin', 'build');
-if (fs.existsSync(pluginJs) || fs.existsSync(pluginBuild)) {
-  const need = ['package/app.plugin.js', 'package/plugin/build/'];
-  for (const item of need) {
-    const found = files.some((f) => f === item || f.startsWith(item));
-    if (!found) {
-      errors.push(`plugin present on disk but missing from pack: ${item}`);
-    }
   }
 }
 
@@ -128,4 +139,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log(`pack:check ok (${files.length} files)`);
+console.log(`pack:check ok (${files.length} files, version lockstep ok)`);

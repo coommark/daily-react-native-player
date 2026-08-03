@@ -104,16 +104,17 @@
     "testMatch": [
       "**/__tests__/**/*.test.js",
       "**/__tests__/**/*.test.ts"
-    ]
+    ],
+    "transform": {
+      "^.+\\.[jt]sx?$": "babel-jest"
+    },
+    "moduleNameMapper": {
+      "^react-native$": "<rootDir>/src/__mocks__/react-native.js"
+    }
   },
   "peerDependencies": {
     "expo": ">=53.0.0",
     "react": "*",
     "react-native": ">=0.79.0"
-  },
-  "peerDependenciesMeta": {
-    "expo": {
-      "optional": true
-    }
   }
 }

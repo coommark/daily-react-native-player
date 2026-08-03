@@ -6,7 +6,8 @@ plugins {
 group = 'expo.modules.dailyreactnativeplayer'
 version = '0.1.0'
 
-def media3Version = '1.5.1'
+// Pin near Bible-known-good Media3 1.8.x; bump deliberately later.
+def media3Version = '1.8.0'
 
 android {
   namespace "expo.modules.dailyreactnativeplayer"

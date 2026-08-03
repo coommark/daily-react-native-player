@@ -37,8 +37,9 @@ example app → JS Player / Silence / Ambient(opt) → Expo Module
 
 ## Layers
 
-- **JS:** imperative API, events, silence helpers, optional ambient facade
-- **Config plugin (T2):** plugin-owned iOS `UIBackgroundModes: audio` + Android FGS permissions + `PlaybackService` declaration in the *app* manifest (`createRunOncePlugin`, `enableBackgroundPlayback` escape hatch). Library AAR owns the Kotlin `PlaybackService` class and pinned Media3 deps; library manifest stays free of FGS/service. Stub session id: `daily-react-native-player:<packageName>` (ADR 4). No auto-start / FGS until T4.
-- **Native:** long-lived media service / session; speech focus owner; ambient never requests focus
+- **JS:** imperative Player API (named exports), silence helpers (T7), optional ambient facade (T10)
+- **Config plugin (T2):** plugin-owned iOS `UIBackgroundModes: audio` + Android FGS permissions + `PlaybackService` declaration in the *app* manifest (`createRunOncePlugin`, `enableBackgroundPlayback` escape hatch). Library AAR owns the Kotlin `PlaybackService` class and pinned Media3 deps; library manifest stays free of FGS/service. No auto-start / FGS until T4.
+- **Native (T3):** process-scoped `SpeechEngine` owns the speech player (Android ExoPlayer Media3 **1.8.0**, iOS AVPlayer). Mutations are serialized (Android player looper / main; iOS main via AsyncFunction). `OnDestroy` releases the engine; `reset()` clears source only. `PlaybackService` is an **inert shell** (no ExoPlayer) until T4 attaches `MediaSession` to `SpeechEngine.getPlayer()`. Dual players are forbidden.
+- **Audio policy (T3):** Android `USAGE_MEDIA` + `CONTENT_TYPE_SPEECH`; iOS `AVAudioSession` category `.playback`, mode `.spokenAudio`, Bluetooth/AirPlay options. Full mix-mode / remotes = later tickets.
 
 Detail expands as tickets land. See also `docs/background-playback.md` and `docs/dual-audio.md`.

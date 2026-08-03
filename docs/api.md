@@ -1,28 +1,76 @@
 # API
 
-> Stub. Public surface will grow ticket-by-ticket. Keep this file in sync with exports.
+Public surface for `daily-react-native-player`. Keep in sync with exports and [`bible-acceptance.md`](./bible-acceptance.md).
 
 Primary host: [Daily Bible - Offline & Audio](https://dailybiblenow.com)
 ([Google Play](https://play.google.com/store/apps/details?id=com.coommark.dailybible) ·
 [App Store](https://apps.apple.com/us/app/daily-bible-offline-audio/id6754987448)).
 
-## Current (scaffold smoke — temporary)
+**Peers:** Expo SDK 53+ (Expo Modules Core required), React Native 0.79+, New Architecture only. Web transport is unsupported.
+
+## Implemented (T3)
 
 ```ts
-import DailyReactNativePlayer from 'daily-react-native-player';
+import {
+  setupPlayer,
+  add,
+  play,
+  pause,
+  seekTo,
+  getProgress,
+  getPlaybackState,
+  getPlayWhenReady,
+  setPlayWhenReady,
+  reset,
+  State,
+  PlayerErrorCode,
+  PlayerException,
+} from 'daily-react-native-player';
 ```
 
-The module currently exports the Expo template stub (`PI`, `hello`, `setValueAsync`, `onChange`).
-These exist only to verify native linking. They are **not** the product API and will be replaced
-when transport / queue land (T3+). Prefer the target surface below for app design.
+| Method | Behavior |
+| --- | --- |
+| `setupPlayer(options?)` | Idempotent. Creates the native speech engine. `options` reserved for later `updateOptions`. |
+| `add(track \| track[])` | **Single active source (T3):** uses the first track only; replaces the current item. Multi-track queue = T6. |
+| `play()` / `pause()` | Transport; map to play-when-ready. `play` rejects `no_source`. |
+| `seekTo(seconds)` | Absolute position in **seconds** (≥ 0). Clamped when duration known; pending seek applied when ready. |
+| `getProgress()` | `{ position, duration, buffered }` in seconds; unknowns are `0`. |
+| `getPlaybackState()` | `none` \| `loading` \| `ready` \| `playing` \| `paused` \| `ended` \| `error` |
+| `getPlayWhenReady()` / `setPlayWhenReady(bool)` | Play intent. |
+| `reset()` | Clears source; retains engine. Safe before setup. |
 
-Target surface (see [`bible-acceptance.md`](./bible-acceptance.md)):
+### Track
 
-- Lifecycle: `setupPlayer`, `updateOptions`, `reset`, `registerPlaybackService`
-- Queue / transport / metadata / events
-- `createSilenceTrack` (core)
-- Ambient methods (opt-in)
+```ts
+type Track = {
+  url: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  artwork?: string;
+  type?: 'default' | 'hls'; // HLS rejected until T9
+};
+```
 
-## Types
+### URI policy
 
-TypeScript types live under `src/` and are published via `build/`.
+| Scheme | Rule |
+| --- | --- |
+| `https://` | Preferred for remote |
+| `http://` | Allowed; subject to ATS / cleartext config |
+| `file://` | App-sandbox paths |
+| `content://` | Android only |
+| Bundled assets | Resolve with `Image.resolveAssetSource(require(...))` before `add` |
+| Relative / other schemes | Rejected |
+
+### Errors
+
+Failures throw `PlayerException` with stable `code`:
+
+`not_initialized` · `no_source` · `invalid_argument` · `unsupported_url` · `unsupported_type` · `load_failed` · `playback_failed` · `platform_unsupported`
+
+Call `setupPlayer()` before transport (`reset` is the exception).
+
+## Not yet implemented
+
+Lifecycle options / remotes / queue / silence / ambient / HLS — see [`bible-acceptance.md`](./bible-acceptance.md) and [`ROADMAP.md`](../ROADMAP.md).

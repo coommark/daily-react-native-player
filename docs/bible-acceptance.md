@@ -8,9 +8,9 @@ Keep contract tests aligned with this list.
 ## Lifecycle
 
 - [ ] `registerPlaybackService`
-- [ ] `setupPlayer` (idempotent; treat already-initialized as success)
+- [x] `setupPlayer` (idempotent; treat already-initialized as success)
 - [ ] `updateOptions`
-- [ ] `reset` then re-apply options (remotes / notification)
+- [ ] `reset` then re-apply options (remotes / notification) — `reset()` clears source (T3); remotes re-apply = T4/T8
 
 ## Queue
 
@@ -20,11 +20,11 @@ Keep contract tests aligned with this list.
 
 ## Transport
 
-- [ ] `play` / `pause`
+- [x] `play` / `pause`
 - [ ] `skip` / `skipToNext` / `skipToPrevious`
-- [ ] `seekTo`
-- [ ] `setPlayWhenReady` / `getPlayWhenReady`
-- [ ] `getPlaybackState` / `getProgress`
+- [x] `seekTo`
+- [x] `setPlayWhenReady` / `getPlayWhenReady`
+- [x] `getPlaybackState` / `getProgress`
 - [ ] `setRate` (app may clamp; pause/silence tracks use rate 1)
 
 ## Metadata
@@ -58,7 +58,7 @@ Keep contract tests aligned with this list.
 
 ## Sources
 
-- [ ] Local / remote progressive URLs: WAV, mp3, m4a (AAC), plus other codecs Media3 / AVFoundation decode (T3)
+- [x] Local / remote progressive URLs: WAV, mp3, m4a (AAC), plus other codecs Media3 / AVFoundation decode (T3)
 - [ ] HLS (`TrackType.HLS` / `'hls'`)
 - [ ] Seek-after-ready for HLS
 

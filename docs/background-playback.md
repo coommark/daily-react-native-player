@@ -38,7 +38,7 @@ Optional escape hatch: `{ "enableBackgroundPlayback": false }` skips iOS audio m
 | `UIBackgroundModes: audio` | Config plugin (Info.plist) |
 | Library `AndroidManifest.xml` | Empty of FGS/service (avoids unwanted merge into every consumer) |
 
-`UIBackgroundModes: audio` alone does **not** play audio in background until the player sets an appropriate `AVAudioSession` category (T3/T4).
+`UIBackgroundModes: audio` alone does **not** play audio in background until the player sets an appropriate `AVAudioSession` category. T3 sets `.playback` + `.spokenAudio` on `setupPlayer`. Lock-screen remotes / FGS start remain T4.
 
 ### Runtime host duties
 
@@ -78,8 +78,8 @@ Apply the same Info.plist / AndroidManifest entries manually:
 
 ## Implementation notes
 
-- Android: `MediaSessionService` stub with unique session id per process (ADR 4); real remotes / FGS start = T4
-- iOS: `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` = T4
+- Android: `PlaybackService` is an inert `MediaSessionService` shell (no ExoPlayer). Speech audio lives in `SpeechEngine`. T4 attaches a unique-id `MediaSession` to that player and starts FGS.
+- iOS: session category set in T3; `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` = T4
 - Synchronous `startForeground` within OS deadline when started as FGS = T4
 
 ## QA

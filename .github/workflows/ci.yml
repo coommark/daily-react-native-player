@@ -28,3 +28,6 @@ jobs:
         run: yarn build
       - name: Pack check
         run: yarn pack:check
+      # Android assembleRelease requires example prebuild (no repo-root gradlew).
+      # Residual: run locally after `cd example && npx expo prebuild --platform android`
+      # then `cd android && ./gradlew assembleRelease`. See docs/getting-started.md.
