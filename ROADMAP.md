@@ -14,6 +14,8 @@ Tickets prioritize what that app needs before optional community extras.
 
 Acceptance surface: [`docs/bible-acceptance.md`](./docs/bible-acceptance.md).
 
+**Peer floor:** Expo SDK **57+** / React Native **0.86+** (New Architecture only). See ADR 10 in [`docs/architecture.md`](./docs/architecture.md).
+
 ## Tickets
 
 | ID | Pri | Ticket | Status |
@@ -22,7 +24,7 @@ Acceptance surface: [`docs/bible-acceptance.md`](./docs/bible-acceptance.md).
 | T1 | — | Scaffold Expo module + example (New Arch) + CI + contract-test skeleton | done |
 | T2 | P0 | Config plugin: iOS audio BG + Android FGS / MediaSessionService | done |
 | T3 | — | Progressive formats (WAV, mp3/m4a, platform codecs) + play / pause / seek | done |
-| T4 | P0 | MediaSession + Now Playing + remotes + metadata + ContinuePlayback | pending |
+| T4 | P0 | MediaSession + Now Playing + remotes + metadata + ContinuePlayback | code complete — **device QA required** before done |
 | T5 | P0 | `registerPlaybackService` + remote → JS bridge | pending |
 | T6 | P1 | Queue API + events (Bible matrix) | pending |
 | T7 | P1 | Native silence tracks | pending |

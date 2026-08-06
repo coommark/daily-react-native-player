@@ -7,8 +7,9 @@
 ## Requirements
 
 - **Expo** (Expo Modules Core) — required peer; bare RN without Expo is not supported
-- New Architecture enabled
-- Expo SDK 53+ / React Native 0.79+
+- New Architecture only (mandatory on Expo SDK 57+)
+- Expo SDK 57+ / React Native 0.86+
+- Hosts on Expo &lt;57 must upgrade the app before installing this package
 - iOS and/or Android device or simulator (device required later for P0 background QA)
 
 ## Install (CNG / Expo)
@@ -98,6 +99,15 @@ yarn ios
 yarn android
 ```
 
+After adding a native Expo module (for example `expo-linking`), rebuild the binary — Metro alone cannot link it:
+
+```bash
+cd example
+npx expo run:ios
+# or
+npx expo run:android
+```
+
 If `expo run:ios` fails on **Xcode 26.2** inside `expo-modules-jsi` (`JavaScriptCodable+Date.swift` / `abs` ambiguous), the example `postinstall` script applies the workaround from [expo#47957](https://github.com/expo/expo/issues/47957). Re-run `yarn` in `example/`, then:
 
 ```bash
@@ -105,11 +115,11 @@ rm -rf node_modules/expo-modules-jsi/apple/Products
 npx expo run:ios
 ```
 
-Prefer **Xcode 26.4+** when available (Expo’s recommended toolchain for recent SDKs). Daily Bible (Expo SDK 53) EAS builds default to **Xcode 16.4** unless `eas.json` pins another image.
+Prefer **Xcode 26.4+** (Expo’s recommended toolchain for SDK 57). Daily Bible (Expo SDK 57) should pin a matching EAS image when building natively.
 
 The example depends on `daily-react-native-player` via `file:..` (npm-consumer style) and lists the config plugin in `app.json`. After prebuild, verify injections with `yarn assert:prebuild` from the repo root.
 
-### T3 smoke checklist
+### T3 / T4 smoke checklist
 
 - [x] Android: local WAV (`hynm.wav`) play/pause/seek
 - [x] Android: local MP3 (`instrumentals.mp3`) play/pause/seek
@@ -117,14 +127,16 @@ The example depends on `daily-react-native-player` via `file:..` (npm-consumer s
 - [x] `reset` then load again works
 - [x] Fast Refresh does not brick setup (idempotent `setupPlayer`)
 - [x] Invalid URL surfaces a `PlayerError` / `PlayerException` code
+- [ ] **Physical** Android: lock screen + notification metadata + Play/Pause/Stop + ContinuePlayback swipe-away
+- [ ] **Physical** iOS: Now Playing + remotes
 
-Emulator audio fidelity is still non-authoritative for P0 background QA. Lock-screen / notification QA remains T4+.
+Emulator audio fidelity is non-authoritative for P0 background QA. See the device matrix in [`background-playback.md`](./background-playback.md).
 
-**CI residual (T3):** There is no library `gradlew` in-repo. Android `assembleRelease` requires `example` prebuild (`npx expo prebuild --platform android`) then `./gradlew assembleRelease`. That job is not in CI yet (heavy / flaky on ubuntu without a committed native tree). JS/unit/plugin/pack gates remain in CI.
+**CI:** Build → typecheck (src + plugin) → lint → tests → plugin tests → pack:check. Android `assembleRelease` still requires local example prebuild.
 
 ## Next
 
-1. Lock-screen / notification controls (T4–T5)
+1. Complete T4 physical device QA; then `registerPlaybackService` (T5)
 2. Queue + events (T6)
 
 See [`ROADMAP.md`](../ROADMAP.md).

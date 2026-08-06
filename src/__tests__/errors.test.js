@@ -1,7 +1,7 @@
 const { PlayerErrorCode, PlayerException, isPlayerException } = require('../errors');
 
 describe('PlayerErrorCode', () => {
-  it('exposes stable T3 codes', () => {
+  it('exposes stable T3 codes plus setup_timeout', () => {
     expect(PlayerErrorCode).toEqual({
       NotInitialized: 'not_initialized',
       NoSource: 'no_source',
@@ -11,6 +11,7 @@ describe('PlayerErrorCode', () => {
       LoadFailed: 'load_failed',
       PlaybackFailed: 'playback_failed',
       PlatformUnsupported: 'platform_unsupported',
+      SetupTimeout: 'setup_timeout',
     });
   });
 });

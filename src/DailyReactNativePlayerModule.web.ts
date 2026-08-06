@@ -8,75 +8,60 @@ type ProgressPayload = {
   buffered: number;
 };
 
+function unsupported(): never {
+  throw new PlayerException(
+    PlayerErrorCode.PlatformUnsupported,
+    'daily-react-native-player is not supported on web'
+  );
+}
+
 class DailyReactNativePlayerModule extends NativeModule {
   async setupPlayer(_options?: Record<string, unknown>): Promise<void> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+    unsupported();
   }
 
-  async add(_url: string): Promise<void> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+  async updateOptions(_options?: Record<string, unknown>): Promise<void> {
+    unsupported();
+  }
+
+  async add(_track: Record<string, unknown>): Promise<void> {
+    unsupported();
+  }
+
+  async updateNowPlayingMetadata(_metadata: Record<string, unknown>): Promise<void> {
+    unsupported();
   }
 
   async play(): Promise<void> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+    unsupported();
   }
 
   async pause(): Promise<void> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+    unsupported();
   }
 
   async seekTo(_position: number): Promise<void> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+    unsupported();
   }
 
   async getProgress(): Promise<ProgressPayload> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+    unsupported();
   }
 
   async getPlaybackState(): Promise<string> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+    unsupported();
   }
 
   async getPlayWhenReady(): Promise<boolean> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+    unsupported();
   }
 
   async setPlayWhenReady(_value: boolean): Promise<void> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+    unsupported();
   }
 
   async reset(): Promise<void> {
-    throw new PlayerException(
-      PlayerErrorCode.PlatformUnsupported,
-      'daily-react-native-player is not supported on web'
-    );
+    unsupported();
   }
 }
 

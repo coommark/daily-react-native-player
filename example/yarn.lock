@@ -1740,6 +1740,13 @@ expo-constants@~57.0.8:
   dependencies:
     "@expo/env" "~2.4.2"
 
+expo-constants@~57.0.9:
+  version "57.0.9"
+  resolved "https://registry.yarnpkg.com/expo-constants/-/expo-constants-57.0.9.tgz#c5085c2cc8842ca98c1a29bc7a2c960448e87f62"
+  integrity sha512-Y47sGiF+U8fwicUSPdJPjB27PuU+FgLK4Mpai0ksZF5hv8jNN3HBqKuDNxsiu70uHBKf80TaR4gwMPh0pmETiQ==
+  dependencies:
+    "@expo/env" "~2.4.2"
+
 expo-file-system@~57.0.1:
   version "57.0.1"
   resolved "https://registry.yarnpkg.com/expo-file-system/-/expo-file-system-57.0.1.tgz#920792f0e5e1c1a98da80d511dc5c131ab302651"
@@ -1756,6 +1763,14 @@ expo-keep-awake@~57.0.1:
   version "57.0.1"
   resolved "https://registry.yarnpkg.com/expo-keep-awake/-/expo-keep-awake-57.0.1.tgz#75dfd3d6faeb0f32eb8b670d6b736375fdf2cdb8"
   integrity sha512-28lkFImeXTS+bhAjuCFV7w7tW5bXg27BJVrxv+nC/nyYa86qEa0oFeHwqol6ha5k4pdVDQgBF09GM4A1k76Ssg==
+
+expo-linking@~57.0.5:
+  version "57.0.5"
+  resolved "https://registry.yarnpkg.com/expo-linking/-/expo-linking-57.0.5.tgz#45ecde41b7902fbf3599a6e6e0ec271ce6f35d2d"
+  integrity sha512-SmJI3wr0EVfeKPGf+Qgr9gUbrXk8mM0ATqYLvAX/EAzawDjohPzMJ5pTt7TYMX0Wknj4XCtyCQrGhnERMXT6cQ==
+  dependencies:
+    expo-constants "~57.0.9"
+    invariant "^2.2.4"
 
 expo-modules-autolinking@~57.0.9:
   version "57.0.9"
@@ -3103,8 +3118,6 @@ supports-color@^8.0.0:
   version "8.1.1"
   resolved "https://registry.yarnpkg.com/supports-color/-/supports-color-8.1.1.tgz#cd6fc17e28500cff56c1b86c0a7fd4a54a73005c"
   integrity sha512-MpUEN2OodtUzxvKQl72cUF7RQ5EiHsGvSsVG0ia9c5RbWGL2CI4C7EpPS8UTBIplnlzZiNuV56w+FuNxy3ty2Q==
-  dependencies:
-    has-flag "^4.0.0"
 
 supports-hyperlinks@^2.0.0:
   version "2.3.0"

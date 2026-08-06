@@ -12,7 +12,7 @@ Non-negotiable for v0.1 / Bible-ready release — required by
 - iOS `UIBackgroundModes: audio`
 - Lock-screen and notification controls: play, pause, stop, next, previous
 - Now-playing artifacts: title, artist, album, artwork, duration / position, app / session activity
-- Remotes delivered to JS via `registerPlaybackService`
+- Remotes delivered to JS via `registerPlaybackService` (**T5**; T4 uses native Play/Pause/Stop defaults)
 - `updateOptions` re-applied after `reset()` so remotes / notification config stay alive
 
 ## Config plugin (T2 — done)
@@ -27,7 +27,7 @@ CNG / Expo prebuild hosts add:
 }
 ```
 
-Optional escape hatch: `{ "enableBackgroundPlayback": false }` skips iOS audio mode, Android FGS permissions, and the service declaration.
+Optional escape hatch: `{ "enableBackgroundPlayback": false }` skips iOS audio mode, Android FGS permissions, and the service declaration. Speech transport still works; Android MediaSession / FGS is skipped.
 
 ### Ownership
 
@@ -37,12 +37,16 @@ Optional escape hatch: `{ "enableBackgroundPlayback": false }` skips iOS audio m
 | `<service>` + FGS / `POST_NOTIFICATIONS` permissions | Config plugin (app manifest) |
 | `UIBackgroundModes: audio` | Config plugin (Info.plist) |
 | Library `AndroidManifest.xml` | Empty of FGS/service (avoids unwanted merge into every consumer) |
+| `MediaSession` + FGS start | T4 — `SessionHolder` + `SpeechEngine` player |
+| iOS Now Playing / remotes | T4 — `NowPlayingController` |
 
-`UIBackgroundModes: audio` alone does **not** play audio in background until the player sets an appropriate `AVAudioSession` category. T3 sets `.playback` + `.spokenAudio` on `setupPlayer`. Lock-screen remotes / FGS start remain T4.
+`UIBackgroundModes: audio` alone does **not** play audio in background until the player sets an appropriate `AVAudioSession` category. T3 sets `.playback` + `.spokenAudio` on `setupPlayer`.
 
 ### Runtime host duties
 
-- On Android 13+, **request `POST_NOTIFICATIONS` at runtime** before expecting a visible media notification (plugin only *declares* the permission; T4 shows the notification).
+- On Android 13+, **request `POST_NOTIFICATIONS` at runtime** before expecting a visible media notification (plugin only *declares* the permission).
+- Hosts targeting **API 34+** must keep FGS type `mediaPlayback` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (injected by the plugin).
+- Prefer **https** artwork URIs (ATS / cleartext). Artwork load failures must not break playback.
 - Do not run a second focus-owning media session / FGS for the same playback role.
 
 ### Bare workflow (no CNG)
@@ -76,13 +80,38 @@ Apply the same Info.plist / AndroidManifest entries manually:
 </service>
 ```
 
-## Implementation notes
+`android:exported="true"` is the T4 default (Media3 / system controller binding). Optionally probe `false` on device later; only change if lock-screen controls still work and docs/tests are updated.
 
-- Android: `PlaybackService` is an inert `MediaSessionService` shell (no ExoPlayer). Speech audio lives in `SpeechEngine`. T4 attaches a unique-id `MediaSession` to that player and starts FGS.
-- iOS: session category set in T3; `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` = T4
-- Synchronous `startForeground` within OS deadline when started as FGS = T4
+## T4 implementation contract
 
-## QA
+- Android: unique-id `MediaSession` attached to `SpeechEngine` ExoPlayer; `PlaybackService` hosts FGS / media notification via Media3 (`onUpdateNotification` / synchronous `startForeground` within OS deadline). No fake bootstrap player. No FGS from `BOOT_COMPLETED`.
+- iOS: `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` on the shared speech player.
+- Kill policy: `appKilledPlaybackBehavior` — `ContinuePlayback` (Bible default) | `PausePlayback` | `StopPlaybackAndRemoveNotification`; `stopForegroundGracePeriod` (default 5s).
+- Remotes (T4): Play / Pause / Stop → native engine. Next / Previous visible when enabled, **no-op** until T5/T6.
+- `reset()` clears source + now-playing display; keeps session, remotes, and persisted options.
 
-Emulator audio is weak signal. Physical Android (incl. low-end) + physical iOS required before calling T4/T5 done.
-After example `npx expo prebuild`, run `yarn assert:prebuild` from the repo root to verify injected modes / FGS / service.
+See ownership / kill matrix in [`architecture.md`](./architecture.md).
+
+## Device QA matrix (T4)
+
+Emulator audio is weak signal. Physical Android (Pixel API 34/35 + one OEM) + physical iOS required before calling T4 **done** on the roadmap.
+
+**Packaging gate (automated — passed with T4 implementation):** PrivacyInfo + MediaPlayer/AVFoundation podspec; R8 keeps; `exported=true` documented; New Arch guard; CI build-before-plugin-tests; NativeModule types; `pack:check` includes PrivacyInfo.
+
+| Case | Android Pixel | Android OEM | iOS |
+| --- | --- | --- | --- |
+| Screen-off audio | | | |
+| Lock screen + shade metadata / artwork / progress | | | |
+| Play / Pause / Stop remotes | | | |
+| Next / Prev visible, no crash | | | |
+| Recents swipe + ContinuePlayback | | | N/A |
+| Grace pause / resume | | | NP elapsed |
+| Deny `POST_NOTIFICATIONS` | | — | N/A |
+| Forced `updateNowPlayingMetadata` | | | |
+| `reset` → `updateOptions` → `add` | | | |
+| Relaunch no zombie session | | | |
+| T3 transport still works in example | | | |
+
+Record date, devices, and pass/fail when QA completes.
+
+After example `npx expo prebuild`, run `yarn assert:prebuild` from the repo root to verify injected modes / FGS / service / `stopWithTask`.

@@ -1,5 +1,5 @@
 /**
- * Contract tests — planned Bible surface + implemented T3 exports.
+ * Contract tests — planned Bible surface + implemented T3/T4 exports.
  */
 
 const PLANNED_PUBLIC_SURFACE = [
@@ -35,9 +35,12 @@ const PLANNED_PUBLIC_SURFACE = [
   'ambientFade',
 ];
 
-const IMPLEMENTED_T3 = [
+const IMPLEMENTED_T4 = [
   'setupPlayer',
+  'updateOptions',
   'add',
+  'updateNowPlayingMetadata',
+  'updateMetadataForTrack',
   'play',
   'pause',
   'seekTo',
@@ -46,7 +49,10 @@ const IMPLEMENTED_T3 = [
   'getPlayWhenReady',
   'setPlayWhenReady',
   'reset',
+  'getPlayerOptions',
   'State',
+  'Capability',
+  'AppKilledPlaybackBehavior',
   'PlayerErrorCode',
   'PlayerException',
 ];
@@ -55,7 +61,9 @@ jest.mock('../DailyReactNativePlayerModule', () => ({
   __esModule: true,
   default: {
     setupPlayer: jest.fn(async () => {}),
+    updateOptions: jest.fn(async () => {}),
     add: jest.fn(async () => {}),
+    updateNowPlayingMetadata: jest.fn(async () => {}),
     play: jest.fn(async () => {}),
     pause: jest.fn(async () => {}),
     seekTo: jest.fn(async () => {}),
@@ -85,22 +93,19 @@ describe('daily-react-native-player contract', () => {
     );
   });
 
-  it('exports implemented T3 API', () => {
+  it('exports implemented T4 API', () => {
     const api = require('../index');
-    for (const name of IMPLEMENTED_T3) {
+    for (const name of IMPLEMENTED_T4) {
       expect(api[name]).toBeDefined();
     }
     expect(typeof api.setupPlayer).toBe('function');
-    expect(typeof api.add).toBe('function');
-    expect(typeof api.play).toBe('function');
-    expect(typeof api.pause).toBe('function');
-    expect(typeof api.seekTo).toBe('function');
-    expect(typeof api.getProgress).toBe('function');
-    expect(typeof api.getPlaybackState).toBe('function');
-    expect(typeof api.getPlayWhenReady).toBe('function');
-    expect(typeof api.setPlayWhenReady).toBe('function');
-    expect(typeof api.reset).toBe('function');
+    expect(typeof api.updateOptions).toBe('function');
+    expect(typeof api.updateNowPlayingMetadata).toBe('function');
+    expect(typeof api.updateMetadataForTrack).toBe('function');
+    expect(api.Capability.Play).toBe('play');
+    expect(api.AppKilledPlaybackBehavior.ContinuePlayback).toBe('continue-playback');
     expect(api.State.Playing).toBe('playing');
     expect(api.PlayerErrorCode.NoSource).toBe('no_source');
+    expect(api.PlayerErrorCode.SetupTimeout).toBe('setup_timeout');
   });
 });

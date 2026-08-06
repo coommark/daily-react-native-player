@@ -129,6 +129,7 @@ describe('withDailyReactNativePlayer', () => {
     expect(manifestXml).toContain('mediaPlayback');
     expect(manifestXml).toMatch(/android:exported="true"/);
     expect(manifestXml).toContain('androidx.media3.session.MediaSessionService');
+    expect(manifestXml).toMatch(/android:stopWithTask="false"/);
   });
 
   it('skips injection when enableBackgroundPlayback is false', async () => {

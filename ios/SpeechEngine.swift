@@ -4,7 +4,7 @@ import ExpoModulesCore
 /**
  * Process-scoped speech player (single AVPlayer owner).
  * Call from the main queue (module AsyncFunctions use `.runOnQueue(.main)`).
- * Now Playing / remotes attach in T4.
+ * Now Playing / remotes via [NowPlayingController].
  */
 final class SpeechEngine {
   static let shared = SpeechEngine()
@@ -18,6 +18,8 @@ final class SpeechEngine {
   private var endObserver: NSObjectProtocol?
   private var statusObservation: NSKeyValueObservation?
   private var playWhenReadyFlag = false
+  private var killBehavior = "continue-playback"
+  private var fgsProxyActive = false
 
   private init() {}
 
@@ -40,7 +42,14 @@ final class SpeechEngine {
     playWhenReadyFlag = false
   }
 
-  func add(urlString: String) throws {
+  func applyOptions(_ options: [String: Any]?) {
+    guard let options else { return }
+    if let kill = options["appKilledPlaybackBehavior"] as? String {
+      killBehavior = kill
+    }
+  }
+
+  func add(urlString: String, metadata: [String: Any]? = nil) throws {
     try ensureInitialized()
     guard let url = URL(string: urlString) else {
       throw Exception(name: "unsupported_url", description: "Invalid media url", code: "unsupported_url")
@@ -58,6 +67,11 @@ final class SpeechEngine {
     if playWhenReadyFlag {
       player?.play()
     }
+    NowPlayingController.shared.applyTrackMetadata(metadata)
+  }
+
+  func updateNowPlayingMetadata(_ metadata: [String: Any]) {
+    NowPlayingController.shared.applyTrackMetadata(metadata, force: true)
   }
 
   func play() throws {
@@ -67,6 +81,7 @@ final class SpeechEngine {
     }
     try activateAudioSession()
     playWhenReadyFlag = true
+    fgsProxyActive = true
     if player?.currentItem?.status == .failed {
       throw Exception(name: "playback_failed", description: "Player item failed", code: "playback_failed")
     }
@@ -76,12 +91,14 @@ final class SpeechEngine {
       player?.seek(to: .zero)
     }
     player?.play()
+    NowPlayingController.shared.syncFromEngine()
   }
 
   func pause() {
     guard initialized else { return }
     playWhenReadyFlag = false
     player?.pause()
+    NowPlayingController.shared.syncFromEngine()
   }
 
   func seekTo(positionSeconds: Double) throws {
@@ -107,6 +124,7 @@ final class SpeechEngine {
     pendingSeekSeconds = nil
     let time = CMTime(seconds: clamped, preferredTimescale: 600)
     player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+    NowPlayingController.shared.syncFromEngine()
   }
 
   func getProgress() -> [String: Double] {
@@ -165,9 +183,11 @@ final class SpeechEngine {
     if value {
       try activateAudioSession()
       player?.play()
+      fgsProxyActive = true
     } else {
       player?.pause()
     }
+    NowPlayingController.shared.syncFromEngine()
   }
 
   func reset() {
@@ -180,10 +200,19 @@ final class SpeechEngine {
     pendingSeekSeconds = nil
     lastErrorCode = nil
     playWhenReadyFlag = false
+    NowPlayingController.shared.clearDisplay()
+  }
+
+  func releaseIfAllowed() {
+    if killBehavior == "continue-playback" && fgsProxyActive && playWhenReadyFlag {
+      return
+    }
+    releaseEngine()
   }
 
   func releaseEngine() {
     tearDownItemObservers()
+    NowPlayingController.shared.tearDown()
     player?.pause()
     player?.replaceCurrentItem(with: nil)
     player = nil
@@ -193,6 +222,7 @@ final class SpeechEngine {
     pendingSeekSeconds = nil
     lastErrorCode = nil
     playWhenReadyFlag = false
+    fgsProxyActive = false
   }
 
   private func ensureInitialized() throws {
@@ -225,6 +255,7 @@ final class SpeechEngine {
         switch observed.status {
         case .readyToPlay:
           self.flushPendingSeek()
+          NowPlayingController.shared.syncFromEngine()
         case .failed:
           self.lastErrorCode = "load_failed"
         default:
@@ -238,6 +269,7 @@ final class SpeechEngine {
       queue: .main
     ) { [weak self] _ in
       self?.playWhenReadyFlag = false
+      NowPlayingController.shared.syncFromEngine()
     }
   }
 

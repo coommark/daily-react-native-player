@@ -73,6 +73,15 @@ if (!fs.existsSync(manifestPath)) {
       fail(`AndroidManifest missing: ${item}`);
     }
   }
+  if (!xml.includes('android:stopWithTask="false"') && !xml.includes("android:stopWithTask=\"false\"")) {
+    // Expo may serialize differently
+    if (!/stopWithTask["\s]*=["\s]*false/.test(xml)) {
+      fail('AndroidManifest missing stopWithTask=false (ContinuePlayback wiring)');
+    }
+  }
+  if (!xml.includes('androidx.media3.session.MediaSessionService')) {
+    fail('AndroidManifest missing MediaSessionService intent-filter action');
+  }
 }
 
 if (errors.length) {

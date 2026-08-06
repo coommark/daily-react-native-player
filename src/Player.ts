@@ -1,9 +1,29 @@
 import { Platform } from 'react-native';
 
 import NativeModule from './DailyReactNativePlayerModule';
+import { mergeForcedMetadata, trackToNativePayload, type NowPlayingMetadata } from './Metadata';
+import {
+  DEFAULT_PLAYER_OPTIONS,
+  mergePlayerOptions,
+  optionsToNativeMap,
+  type PlayerOptions,
+  type PlayerOptionsInput,
+} from './Options';
 import type { Progress, Track } from './Track';
 import { PlayerErrorCode, PlayerException } from './errors';
 import { normalizeTrackUrl } from './normalizeTrackUrl';
+
+/** Persisted options survive reset() (Bible contract). */
+let persistedOptions: PlayerOptions = {
+  ...DEFAULT_PLAYER_OPTIONS,
+  capabilities: [...DEFAULT_PLAYER_OPTIONS.capabilities],
+};
+
+/** Current track metadata (single-source T3/T4). Cleared on reset. */
+let currentTrackMeta: NowPlayingMetadata | null = null;
+
+/** Forced now-playing override. Cleared on reset. */
+let forcedNowPlaying: NowPlayingMetadata | null = null;
 
 function ensureNative(): typeof NativeModule {
   if (Platform.OS === 'web') {
@@ -30,9 +50,41 @@ function rethrowNative(error: unknown): never {
   throw error instanceof Error ? error : new Error(String(error));
 }
 
-export async function setupPlayer(_options?: Record<string, unknown>): Promise<void> {
+function assertNewArchitecture(): void {
+  // Bridgeless / New Arch is required. TurboModuleProxy absence is a weak signal on some hosts;
+  // prefer global flag when present.
+  const g = globalThis as { RN$Bridgeless?: boolean; __turboModuleProxy?: unknown };
+  if (g.RN$Bridgeless === false) {
+    throw new PlayerException(
+      PlayerErrorCode.PlatformUnsupported,
+      'daily-react-native-player requires the New Architecture'
+    );
+  }
+}
+
+export function getPlayerOptions(): PlayerOptions {
+  return {
+    ...persistedOptions,
+    capabilities: [...persistedOptions.capabilities],
+  };
+}
+
+export async function setupPlayer(options?: PlayerOptionsInput): Promise<void> {
+  assertNewArchitecture();
+  if (options) {
+    persistedOptions = mergePlayerOptions(persistedOptions, options);
+  }
   try {
-    await ensureNative().setupPlayer(_options ?? {});
+    await ensureNative().setupPlayer(optionsToNativeMap(persistedOptions));
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
+export async function updateOptions(options?: PlayerOptionsInput): Promise<void> {
+  persistedOptions = mergePlayerOptions(persistedOptions, options ?? {});
+  try {
+    await ensureNative().updateOptions(optionsToNativeMap(persistedOptions));
   } catch (e) {
     rethrowNative(e);
   }
@@ -55,10 +107,82 @@ export async function add(trackOrTracks: Track | Track[]): Promise<void> {
   if (url.toLowerCase().startsWith('content:') && Platform.OS === 'ios') {
     throw new PlayerException(PlayerErrorCode.UnsupportedUrl, 'content:// urls are Android-only');
   }
+
+  currentTrackMeta = {
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    artwork: track.artwork,
+  };
+  // New add clears forced override unless host re-applies updateNowPlayingMetadata
+  forcedNowPlaying = null;
+
+  const payload = trackToNativePayload(
+    url,
+    {
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      artwork: track.artwork,
+    },
+    persistedOptions.autoUpdateMetadata
+  );
+
   try {
-    await ensureNative().add(url);
+    await ensureNative().add(payload);
   } catch (e) {
     rethrowNative(e);
+  }
+}
+
+export async function updateNowPlayingMetadata(metadata: NowPlayingMetadata): Promise<void> {
+  if (!metadata || typeof metadata !== 'object') {
+    throw new PlayerException(
+      PlayerErrorCode.InvalidArgument,
+      'updateNowPlayingMetadata requires an object'
+    );
+  }
+  forcedNowPlaying = mergeForcedMetadata(forcedNowPlaying ?? {}, metadata);
+  try {
+    await ensureNative().updateNowPlayingMetadata({ ...forcedNowPlaying });
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
+export async function updateMetadataForTrack(
+  index: number,
+  metadata: NowPlayingMetadata
+): Promise<void> {
+  if (!Number.isInteger(index) || index !== 0) {
+    throw new PlayerException(
+      PlayerErrorCode.InvalidArgument,
+      'updateMetadataForTrack only supports index 0 until T6'
+    );
+  }
+  if (!metadata || typeof metadata !== 'object') {
+    throw new PlayerException(
+      PlayerErrorCode.InvalidArgument,
+      'updateMetadataForTrack requires an object'
+    );
+  }
+  currentTrackMeta = mergeForcedMetadata(currentTrackMeta ?? {}, metadata);
+  if (persistedOptions.autoUpdateMetadata && !forcedNowPlaying) {
+    try {
+      await ensureNative().updateNowPlayingMetadata({ ...currentTrackMeta });
+    } catch (e) {
+      rethrowNative(e);
+    }
+  } else if (forcedNowPlaying) {
+    // Forced still wins — push merge for native display
+    try {
+      await ensureNative().updateNowPlayingMetadata({
+        ...currentTrackMeta,
+        ...forcedNowPlaying,
+      });
+    } catch (e) {
+      rethrowNative(e);
+    }
   }
 }
 
@@ -134,9 +258,22 @@ export async function setPlayWhenReady(value: boolean): Promise<void> {
 }
 
 export async function reset(): Promise<void> {
+  currentTrackMeta = null;
+  forcedNowPlaying = null;
+  // Options intentionally persist across reset
   try {
     await ensureNative().reset();
   } catch (e) {
     rethrowNative(e);
   }
+}
+
+/** @internal test helper — reset JS option/metadata state between tests */
+export function __resetPlayerJsStateForTests(): void {
+  persistedOptions = {
+    ...DEFAULT_PLAYER_OPTIONS,
+    capabilities: [...DEFAULT_PLAYER_OPTIONS.capabilities],
+  };
+  currentTrackMeta = null;
+  forcedNowPlaying = null;
 }

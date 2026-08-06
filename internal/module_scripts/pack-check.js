@@ -14,6 +14,7 @@ const MUST_INCLUDE = [
   'package/build/index.js',
   'package/android/',
   'package/ios/',
+  'package/ios/PrivacyInfo.xcprivacy',
   'package/expo-module.config.json',
   'package/LICENSE',
   'package/app.plugin.js',

@@ -14,6 +14,7 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
+  s.frameworks = 'AVFoundation', 'MediaPlayer'
 
   # Swift/Objective-C compatibility
   s.pod_target_xcconfig = {
@@ -21,4 +22,8 @@ Pod::Spec.new do |s|
   }
 
   s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+  s.exclude_files = "PrivacyInfo.xcprivacy"
+  s.resource_bundles = {
+    'DailyReactNativePlayerPrivacyInfo' => ['PrivacyInfo.xcprivacy']
+  }
 end

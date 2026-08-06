@@ -12,9 +12,12 @@
     "./app.plugin": "./app.plugin.js",
     "./app.plugin.js": "./app.plugin.js"
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "./build/DailyReactNativePlayerModule.js",
+    "./build/DailyReactNativePlayerModule.web.js"
+  ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "files": [
     "build",
@@ -32,7 +35,7 @@
     "lint": "eslint src/ plugin/src/",
     "test": "CI=1 node internal/module_scripts/test.js",
     "test:watch": "node internal/module_scripts/test.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p plugin/tsconfig.json",
     "pack:check": "node internal/module_scripts/pack-check.js",
     "assert:prebuild": "node internal/module_scripts/assert-prebuild.js",
     "prepare": "node internal/module_scripts/prepare.js",
@@ -84,16 +87,15 @@
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@types/jest": "^29.2.1",
-    "@types/react": "~19.1.1",
-    "babel-preset-expo": "~55.0.8",
+    "@types/react": "~19.2.2",
+    "babel-preset-expo": "~57.0.5",
     "eslint": "~9.39.4",
     "eslint-config-universe": "^15.0.3",
     "expo": "^57.0.9",
     "jest": "^29.7.0",
-    "jest-expo": "~55.0.9",
     "prettier": "^3.0.0",
-    "react": "19.1.1",
-    "react-native": "0.82.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
     "typescript": "^5.9.2"
   },
   "jest": {
@@ -113,8 +115,8 @@
     }
   },
   "peerDependencies": {
-    "expo": ">=53.0.0",
+    "expo": ">=57.0.0",
     "react": "*",
-    "react-native": ">=0.79.0"
+    "react-native": ">=0.86.0"
   }
 }

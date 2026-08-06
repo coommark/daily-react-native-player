@@ -9,12 +9,12 @@ Keep contract tests aligned with this list.
 
 - [ ] `registerPlaybackService`
 - [x] `setupPlayer` (idempotent; treat already-initialized as success)
-- [ ] `updateOptions`
-- [ ] `reset` then re-apply options (remotes / notification) — `reset()` clears source (T3); remotes re-apply = T4/T8
+- [x] `updateOptions`
+- [x] `reset` then re-apply options (remotes / notification) — options persist across `reset`; re-`updateOptions` also supported
 
 ## Queue
 
-- [ ] `add` (append + insert at index) — T3 ships single-source `add` (replace current item); full queue semantics = T6
+- [ ] `add` (append + insert at index) — T3/T4 ship single-source `add` (replace current item); full queue semantics = T6
 - [ ] `remove`
 - [ ] `getQueue` / `getActiveTrack` / `getActiveTrackIndex`
 
@@ -29,9 +29,9 @@ Keep contract tests aligned with this list.
 
 ## Metadata
 
-- [ ] `updateNowPlayingMetadata`
-- [ ] `updateMetadataForTrack`
-- [ ] Forced metadata overrides file tags when needed
+- [x] `updateNowPlayingMetadata`
+- [x] `updateMetadataForTrack` — index `0` only until T6
+- [x] Forced metadata overrides file tags when needed
 
 ## Events
 
@@ -46,15 +46,15 @@ Keep contract tests aligned with this list.
 
 ## Setup options used by Bible
 
-- [ ] Capabilities: Play, Pause, Stop, SkipToNext, SkipToPrevious
+- [x] Capabilities: Play, Pause, Stop, SkipToNext, SkipToPrevious
 - [ ] `progressUpdateEventInterval`
-- [ ] Android `appKilledPlaybackBehavior: ContinuePlayback`, `stopForegroundGracePeriod`
-- [ ] `androidAudioContentType: Speech`
+- [x] Android `appKilledPlaybackBehavior: ContinuePlayback`, `stopForegroundGracePeriod`
+- [x] `androidAudioContentType: Speech` — via T3 engine attributes (Speech)
 - [ ] `androidAudioMixMode: 'default' | 'duckOthers'`
-- [ ] iOS Playback + SpokenAudio + DuckOthers + Bluetooth + AirPlay
+- [x] iOS Playback + SpokenAudio + DuckOthers + Bluetooth + AirPlay — Playback/SpokenAudio/BT/AirPlay from T3; DuckOthers = T10 mix
 - [ ] Buffer knobs
-- [ ] `autoHandleInterruptions: false`
-- [ ] `autoUpdateMetadata: true`
+- [x] `autoHandleInterruptions: false` — stored; no auto-resume in T4
+- [x] `autoUpdateMetadata: true`
 
 ## Sources
 

@@ -5,18 +5,31 @@ public class DailyReactNativePlayerModule: Module {
     Name("DailyReactNativePlayer")
 
     OnDestroy {
-      SpeechEngine.shared.releaseEngine()
+      SpeechEngine.shared.releaseIfAllowed()
     }
 
-    AsyncFunction("setupPlayer") { (_: [String: Any]?) in
+    AsyncFunction("setupPlayer") { (options: [String: Any]?) in
       try SpeechEngine.shared.setup()
+      SpeechEngine.shared.applyOptions(options)
+      NowPlayingController.shared.attach()
+      NowPlayingController.shared.applyOptions(options)
     }.runOnQueue(.main)
 
-    AsyncFunction("add") { (url: String) in
-      if url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    AsyncFunction("updateOptions") { (options: [String: Any]?) in
+      SpeechEngine.shared.applyOptions(options)
+      NowPlayingController.shared.applyOptions(options)
+    }.runOnQueue(.main)
+
+    AsyncFunction("add") { (track: [String: Any]) in
+      guard let url = track["url"] as? String,
+            !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         throw Exception(name: "invalid_argument", description: "Track url must not be empty", code: "invalid_argument")
       }
-      try SpeechEngine.shared.add(urlString: url)
+      try SpeechEngine.shared.add(urlString: url, metadata: track)
+    }.runOnQueue(.main)
+
+    AsyncFunction("updateNowPlayingMetadata") { (metadata: [String: Any]) in
+      SpeechEngine.shared.updateNowPlayingMetadata(metadata)
     }.runOnQueue(.main)
 
     AsyncFunction("play") {

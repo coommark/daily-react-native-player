@@ -2,7 +2,9 @@ jest.mock('../DailyReactNativePlayerModule', () => ({
   __esModule: true,
   default: {
     setupPlayer: jest.fn(async () => {}),
+    updateOptions: jest.fn(async () => {}),
     add: jest.fn(async () => {}),
+    updateNowPlayingMetadata: jest.fn(async () => {}),
     play: jest.fn(async () => {}),
     pause: jest.fn(async () => {}),
     seekTo: jest.fn(async () => {}),
@@ -15,12 +17,25 @@ jest.mock('../DailyReactNativePlayerModule', () => ({
 }));
 
 const NativeModule = require('../DailyReactNativePlayerModule').default;
-const { add, seekTo, reset, play, setupPlayer } = require('../Player');
+const { AppKilledPlaybackBehavior } = require('../Options');
+const {
+  add,
+  seekTo,
+  reset,
+  play,
+  setupPlayer,
+  updateOptions,
+  updateNowPlayingMetadata,
+  updateMetadataForTrack,
+  getPlayerOptions,
+  __resetPlayerJsStateForTests,
+} = require('../Player');
 const { PlayerErrorCode } = require('../errors');
 
 describe('Player validation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    __resetPlayerJsStateForTests();
   });
 
   it('rejects empty add', async () => {
@@ -66,7 +81,49 @@ describe('Player validation', () => {
     await add({ url: 'https://example.com/a.mp3' });
     await play();
     expect(NativeModule.setupPlayer).toHaveBeenCalled();
-    expect(NativeModule.add).toHaveBeenCalledWith('https://example.com/a.mp3');
+    expect(NativeModule.add).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://example.com/a.mp3' })
+    );
     expect(NativeModule.play).toHaveBeenCalled();
+  });
+
+  it('forwards metadata fields on add when autoUpdateMetadata', async () => {
+    await add({
+      url: 'https://example.com/a.mp3',
+      title: 'Chapter 1',
+      artist: 'Narrator',
+      album: 'Bible',
+    });
+    expect(NativeModule.add).toHaveBeenCalledWith({
+      url: 'https://example.com/a.mp3',
+      title: 'Chapter 1',
+      artist: 'Narrator',
+      album: 'Bible',
+    });
+  });
+
+  it('updateOptions persists across reset', async () => {
+    await updateOptions({
+      appKilledPlaybackBehavior: AppKilledPlaybackBehavior.PausePlayback,
+      stopForegroundGracePeriod: 9,
+    });
+    await reset();
+    const opts = getPlayerOptions();
+    expect(opts.appKilledPlaybackBehavior).toBe(AppKilledPlaybackBehavior.PausePlayback);
+    expect(opts.stopForegroundGracePeriod).toBe(9);
+    expect(NativeModule.updateOptions).toHaveBeenCalled();
+  });
+
+  it('updateNowPlayingMetadata calls native', async () => {
+    await updateNowPlayingMetadata({ title: 'Forced' });
+    expect(NativeModule.updateNowPlayingMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Forced' })
+    );
+  });
+
+  it('updateMetadataForTrack rejects non-zero index', async () => {
+    await expect(updateMetadataForTrack(1, { title: 'x' })).rejects.toEqual(
+      expect.objectContaining({ code: PlayerErrorCode.InvalidArgument })
+    );
   });
 });

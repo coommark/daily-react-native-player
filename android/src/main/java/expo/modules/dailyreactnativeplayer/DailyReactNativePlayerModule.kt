@@ -9,22 +9,33 @@ class DailyReactNativePlayerModule : Module() {
     Name("DailyReactNativePlayer")
 
     OnDestroy {
-      SpeechEngine.release()
+      SpeechEngine.releaseIfAllowed()
     }
 
-    AsyncFunction("setupPlayer") { _: Map<String, Any?>? ->
+    AsyncFunction("setupPlayer") { options: Map<String, Any?>? ->
       val reactContext =
         appContext.reactContext
           ?: throw CodedException("not_initialized", "React context unavailable", null)
       SpeechEngine.setup(reactContext)
+      SpeechEngine.applyOptions(options)
+      SessionHolder.attachIfNeeded(reactContext)
     }
 
-    AsyncFunction("add") { url: String ->
-      if (url.isBlank()) {
+    AsyncFunction("updateOptions") { options: Map<String, Any?>? ->
+      SpeechEngine.applyOptions(options)
+      SessionHolder.applyOptions(options)
+    }
+
+    AsyncFunction("add") { track: Map<String, Any?> ->
+      val url = track["url"] as? String
+      if (url.isNullOrBlank()) {
         throw CodedException("invalid_argument", "Track url must not be empty", null)
       }
-      // content:// is Android-only — accepted here; JS rejects on iOS path.
-      SpeechEngine.add(url)
+      SpeechEngine.add(url, track)
+    }
+
+    AsyncFunction("updateNowPlayingMetadata") { metadata: Map<String, Any?> ->
+      SpeechEngine.updateNowPlayingMetadata(metadata)
     }
 
     AsyncFunction("play") {

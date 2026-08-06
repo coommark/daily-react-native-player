@@ -23,7 +23,7 @@ Most React Native audio stacks were born as **music apps**: heavyweight session 
 | You get | Why it matters |
 | --- | --- |
 | **Expo-first + config plugin** | Continuous prebuild / CNG hosts get iOS audio background mode and Android `mediaPlayback` FGS wired at `prebuild` — not a checklist of manual native edits |
-| **New Architecture only** | No legacy bridge tax. Built for the RN you ship in 2025+ |
+| **New Architecture only** | No legacy bridge tax. Built for Expo SDK 57+ / RN 0.86+ |
 | **Background is P0, not a footnote** | Screen-off playback, lock-screen + notification controls, full now-playing artifacts, continue-after-kill — device-verified before we call it done |
 | **One native audio owner** | Media3 (Android) + AVFoundation (iOS). No second focus-owning library bolted on for “ambient” |
 | **Speech-grade queue** | Progressive mutation, silence as first-class tracks, rate that doesn’t stretch your pauses — designed for narration, Bible, podcasts, lessons |
@@ -67,14 +67,14 @@ Bed music under speech without crackle, without stealing audio focus, without hi
 
 ## Status
 
-**T3 progressive transport landed.** Named Player API: `setupPlayer` / `add` / `play` / `pause` / `seekTo` / progress & state. Background remotes remain T4+.
+**T4 MediaSession / Now Playing landed (code).** Progressive transport + lock-screen/notification session, metadata APIs, ContinuePlayback. **Physical device QA still required** before marking T4 done on the roadmap.
 
 | Area | Status |
 | --- | --- |
 | Expo module + example app | Done (New Arch) |
 | Config plugin (iOS audio BG + Android FGS) | Done (T2) |
 | Local WAV + progressive mp3 / m4a | Done (T3) |
-| Background / lock-screen / notification controls | Planned (P0 / T4–T5) |
+| Background / lock-screen / notification controls | Code complete (T4) — device QA pending |
 | Queue + events | Planned (T6) |
 | Silence tracks | Planned (core / T7) |
 | HLS | Planned (T9; seek-after-ready) |
@@ -101,8 +101,9 @@ See [`ROADMAP.md`](./ROADMAP.md). Star the repo and watch releases if you want t
 
 ## Requirements
 
-- **New Architecture** (`newArchEnabled: true`)
-- **Expo SDK 53+** (Expo Modules Core required) / React Native **0.79+** (primary host: Daily Bible - Offline & Audio)
+- **New Architecture** only (mandatory on Expo SDK 57+)
+- **Expo SDK 57+** (Expo Modules Core required) / React Native **0.86+** (primary host: Daily Bible - Offline & Audio)
+- Hosts on Expo &lt;57 must upgrade the app before installing this package
 - iOS + Android (web transport unsupported)
 
 ---

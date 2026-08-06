@@ -1,4 +1,6 @@
 import {
+  AppKilledPlaybackBehavior,
+  Capability,
   add,
   getPlaybackState,
   getProgress,
@@ -7,11 +9,14 @@ import {
   reset,
   seekTo,
   setupPlayer,
+  updateNowPlayingMetadata,
 } from 'daily-react-native-player';
 import { useEffect, useState } from 'react';
 import {
   Image,
   Linking,
+  PermissionsAndroid,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -34,17 +39,43 @@ function requireAssetUri(
   return url;
 }
 
+/** Android 13+: media notification will not appear without this grant. */
+async function ensurePostNotifications(): Promise<string> {
+  if (Platform.OS !== 'android' || typeof Platform.Version !== 'number' || Platform.Version < 33) {
+    return 'not-required';
+  }
+  const result = await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+  );
+  return String(result);
+}
+
 export default function App() {
   const [state, setState] = useState('none');
   const [progress, setProgress] = useState({ position: 0, duration: 0, buffered: 0 });
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [notifPerm, setNotifPerm] = useState('…');
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        await setupPlayer();
+        const perm = await ensurePostNotifications();
+        if (!cancelled) {
+          setNotifPerm(perm);
+        }
+        await setupPlayer({
+          capabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.Stop,
+            Capability.SkipToNext,
+            Capability.SkipToPrevious,
+          ],
+          appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
+          autoUpdateMetadata: true,
+        });
         if (!cancelled) {
           setReady(true);
         }
@@ -96,6 +127,9 @@ export default function App() {
         <Text style={styles.subHeader}>
           Built primarily for Daily Bible - Offline & Audio
         </Text>
+        <Text style={styles.hint}>
+          Android: allow notifications when prompted, then Play — check shade + lock screen.
+        </Text>
         <Text
           style={styles.link}
           onPress={() =>
@@ -117,6 +151,7 @@ export default function App() {
 
         <Group name="Status">
           <Text style={styles.statusLine}>setup: {ready ? 'ready' : '…'}</Text>
+          <Text style={styles.statusLine}>notifications: {notifPerm}</Text>
           <Text style={styles.statusLine}>state: {state}</Text>
           <Text style={styles.statusLine}>
             progress: {progress.position.toFixed(1)}s / {progress.duration.toFixed(1)}s
@@ -138,6 +173,8 @@ export default function App() {
                   await add({
                     url: requireAssetUri(localWav, 'WAV'),
                     title: 'Hymn',
+                    artist: 'Daily Bible',
+                    album: 'Example',
                   });
                 })
               }>
@@ -154,6 +191,8 @@ export default function App() {
                   await add({
                     url: requireAssetUri(localMp3, 'MP3'),
                     title: 'Instrumentals',
+                    artist: 'Daily Bible',
+                    album: 'Example',
                   });
                 })
               }>
@@ -230,6 +269,23 @@ export default function App() {
               onPress={() => run(() => reset())}>
               <Text style={styles.btnLabel}>Reset</Text>
             </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  await updateNowPlayingMetadata({
+                    title: 'Forced title',
+                    artist: 'Forced artist',
+                    album: 'Forced album',
+                  });
+                })
+              }>
+              <Text style={styles.btnLabel}>Force metadata override</Text>
+            </Pressable>
           </View>
         </Group>
       </ScrollView>
@@ -275,6 +331,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
     color: '#555',
     lineHeight: 22,
+  },
+  hint: {
+    fontSize: 13,
+    marginHorizontal: 20,
+    marginTop: 8,
+    color: '#666',
+    lineHeight: 18,
   },
   link: {
     fontSize: 15,

@@ -18,10 +18,10 @@ Bible-first acceptance wins over speculative community features until 0.1.0 is B
 
 ## Stack
 
-- Expo Module (`create-expo-module`), New Architecture only
-- Example app: Expo (see `example/`), `newArchEnabled: true`
+- Expo Module (`create-expo-module`), New Architecture only (mandatory on Expo 57+)
+- Example app: Expo SDK 57 (see `example/`) — golden tested matrix
 - Package import: `import … from 'daily-react-native-player'`
-- Peers: Expo SDK 53+ / React Native 0.79+ (Bible host); example may track newer Expo for module development
+- Peers: Expo SDK **57+** / React Native **0.86+** (required `expo` peer; Bible host)
 
 ## Day-to-day
 

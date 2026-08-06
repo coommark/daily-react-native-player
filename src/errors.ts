@@ -7,6 +7,7 @@ export const PlayerErrorCode = {
   LoadFailed: 'load_failed',
   PlaybackFailed: 'playback_failed',
   PlatformUnsupported: 'platform_unsupported',
+  SetupTimeout: 'setup_timeout',
 } as const;
 
 export type PlayerErrorCodeValue = (typeof PlayerErrorCode)[keyof typeof PlayerErrorCode];
