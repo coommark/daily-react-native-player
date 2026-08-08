@@ -35,9 +35,8 @@ const gap = createSilenceTrack({ durationMs: 800, id: 'verse-pause' });
 
 await add([speechA, gap, speechB]);
 
-if (isSilenceTrack(await getActiveTrack())) {
-  // Host / T8 policy: often setRate(1) so slow speech rate does not stretch the gap
-}
+// Optional UI: isSilenceTrack(await getActiveTrack())
+// Rate: native forces 1× on silence; desired setRate restores on speech
 ```
 
 | Field | Notes |
@@ -62,13 +61,12 @@ await add([
 await play();
 ```
 
-See the example app **Load speech + silence gap** button.
+See the example app **John 1 + silence + John 2** button.
 
 ## Host responsibilities
 
 - Decide when and how long gaps should be
-- Until T8 lands auto rate handling: if speech plays below 1×, force `setRate(1)` while
-  `isSilenceTrack(active)` so pause WAVs are not stretched, then restore the user rate
+- Rate on silence is handled by the player: desired `setRate` is preserved, but silence plays at **1×** so gaps are not stretched; speech rate restores when leaving silence
 - Do **not** depend on host `expo-file-system` for silence files
 
 ## Native ownership
@@ -84,7 +82,7 @@ No host filesystem dependency. iOS Caches may be purged by the OS; the module re
 
 - Progress duration for silence should match `durationMs / 1000` within about **±20 ms** once ready
 - Public `getQueue` / events never leak internal `file://` cache paths
-- Rate ≠ 1 on silence is allowed by the player; stretching is a host policy concern until T8
+- Hosts may still use `isSilenceTrack` for UI; rate policy no longer requires a host `setRate(1)` dance
 - Silence is **22050 Hz mono** (Piper TTS). Adjacent speech at other rates (e.g. 48 kHz stereo hymns in the example) can click at boundaries; iOS mutes briefly across item swaps to reduce that. Prefer matching speech format for the cleanest gaps.
 
 ## Non-goals

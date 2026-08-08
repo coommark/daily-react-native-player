@@ -30,9 +30,9 @@ Acceptance surface: [`docs/bible-acceptance.md`](./docs/bible-acceptance.md).
 | T5 | P0 | `registerPlaybackService` + remote → JS bridge | done — **device QA** for remotes→JS recommended with T4 matrix |
 | T6 | P1 | Queue API + events (Bible matrix) — **speech playlist** | done |
 | T7 | P1 | Native silence tracks | done |
-| T8 | P1 | Progressive queue mutation + `setRate` + reset → reapply options | pending |
-| T9 | P1 | HLS + seek-after-ready | pending |
-| T10 | P2 | Ambient (lazy, fade, loop, mix modes) — required for Bible-ready | pending |
+| T8 | P1 | Progressive queue mutation + `setRate` + reset → reapply options | done |
+| T9 | P1 | HLS + seek-after-ready | done |
+| T10 | P2 | Ambient (lazy, fade, loop, mix modes) — required for Bible-ready | done |
 | T11 | — | Hardening + device P0 QA | pending |
 | T12 | — | Docs polish + publishable 0.1.0 | pending |
 

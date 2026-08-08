@@ -1,6 +1,7 @@
 # Keep MediaSession / FGS entry points for host R8 / Play release builds.
 -keep class expo.modules.dailyreactnativeplayer.PlaybackService { *; }
 -keep class expo.modules.dailyreactnativeplayer.SpeechEngine { *; }
+-keep class expo.modules.dailyreactnativeplayer.AmbientEngine { *; }
 -keep class expo.modules.dailyreactnativeplayer.SessionHolder { *; }
 -keep class expo.modules.dailyreactnativeplayer.ArtworkLoader { *; }
 -keep class expo.modules.dailyreactnativeplayer.RemoteEventHub { *; }

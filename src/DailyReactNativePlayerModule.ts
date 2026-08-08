@@ -72,7 +72,14 @@ declare class DailyReactNativePlayerModule extends NativeModule<PlayerEvents> {
   getPlaybackState(): Promise<string>;
   getPlayWhenReady(): Promise<boolean>;
   setPlayWhenReady(value: boolean): Promise<void>;
+  setRate(rate: number): Promise<void>;
   reset(): Promise<void>;
+  ambientSetPlaylist(urls: string[], loopAll?: boolean | null): Promise<void>;
+  ambientPlay(): Promise<void>;
+  ambientPause(): Promise<void>;
+  ambientStop(): Promise<void>;
+  ambientSetVolume(level: number): Promise<void>;
+  ambientFade(target: number, durationMs: number): Promise<void>;
 }
 
 export default requireNativeModule<DailyReactNativePlayerModule>('DailyReactNativePlayer');

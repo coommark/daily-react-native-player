@@ -30,6 +30,7 @@ Most React Native audio stacks were born as **music apps**: heavyweight session 
 | **Background is P0, not a footnote** | Screen-off playback, full now-playing artifacts (title, artist, album, artwork), continue-after-kill — device-verified before we call it done |
 | **One native audio owner** | Media3 (Android) + AVFoundation (iOS). No second focus-owning library bolted on for “ambient” |
 | **Events your UI can trust** | Active track, state, progress, queue ended, errors — same stack that powers remotes |
+| **Variable narration speed** | `setRate` with pitch preserved; silence gaps stay at 1× so verse pauses are not stretched |
 | **Ambient when you want it** | Lazy dual-audio under speech: never requests focus, never steals Now Playing; speech-only apps never pay the cost |
 | **Formats that ship** | Local + remote **WAV**, **mp3**, **m4a**, other platform progressive codecs; **HLS** with seek-after-ready |
 | **MIT, no license drama** | Use it in commercial apps. Fork it. Ship it. |
@@ -98,10 +99,28 @@ await skipToNext();
 
 Deep dive: [`docs/queue.md`](./docs/queue.md) · API: [`docs/api.md`](./docs/api.md)
 
+### Playback rate (`setRate`)
+
+**Why:** narration apps need controllable speed without chipmunk pitch or stretched verse gaps.
+
+```ts
+import { setRate, play } from 'daily-react-native-player';
+
+await setRate(1.25); // engine accepts 0.25…4.0; clamp product UX in the app
+await play();
+// Silence tracks auto-play at 1×; desired rate restores on the next speech item
+```
+
+- **Pitch-preserving** on both platforms  
+- Survives progressive **add / remove / skip**  
+- `reset()` restores rate to **1.0** and re-applies player options  
+
+API: [`docs/api.md`](./docs/api.md) · Silence policy: [`docs/silence-tracks.md`](./docs/silence-tracks.md)
+
 ### Silence tracks (core, not a hack)
 
 **Why:** exact-duration gaps as real queue items (skip, progress, remotes, `isSilenceTrack`) instead of fragile timers.  
-**When:** between speech items (verse/chapter pauses); later ambient loop-all gaps (T10).
+**When:** between speech items (verse/chapter pauses); ambient loop-all gaps ([`dual-audio.md`](./docs/dual-audio.md)).
 
 ```ts
 import { add, createSilenceTrack, isSilenceTrack, play } from 'daily-react-native-player';
@@ -113,7 +132,7 @@ await add([
 ]);
 await play();
 
-// Host rate policy (T8): often force rate 1 while isSilenceTrack(active)
+// Optional UI: isSilenceTrack(active) — rate 1× on silence is native-owned
 ```
 
 Native-owned — Android `SilenceMediaSource`, iOS cached PCM WAV (22050 Hz mono 16-bit). No host filesystem dependency.
@@ -122,19 +141,48 @@ Deep dive: [`docs/silence-tracks.md`](./docs/silence-tracks.md)
 
 ### Ambient dual-audio (opt-in)
 
-Bed music under speech without crackle, without stealing audio focus, without hijacking the lock screen. Fade, volume, loop-one / loop-all. Lazy init: if you never call ambient APIs, the second player **never exists**.
+**Why:** bed music under speech for Bible-style listening; lock screen still shows **speech**; speech-only apps never create the second player.
 
-### Streaming & files
+```ts
+await ambientSetPlaylist([bedUrl], true); // loop-all; silence: urls OK for gaps
+await ambientSetVolume(0);
+await ambientPlay();
+await ambientFade(0.35, 1500);
+// speech queue / play as usual — remotes still control speech only
+```
 
-- Progressive: **WAV**, **mp3**, **m4a** (AAC), plus other codecs Media3 / AVFoundation decode  
-- Adaptive: **HLS** (seek-after-ready)  
-- Explicitly out of v0.1: DASH, SmoothStreaming, Cast, Android Auto browse, web player
+- **Lazy init** — second player exists only after the first ambient API  
+- Fade / volume / loop-one vs loop-all  
+- Mix mode `androidAudioMixMode: 'default' | 'duckOthers'`  
+- Never requests focus / never owns Now Playing; survives speech `reset`  
+
+Deep dive: [`docs/dual-audio.md`](./docs/dual-audio.md)
+
+### Progressive + HLS
+
+**Why:** local files, CDN progressive audio, and chapter HLS from the same queue — including seek before the stream is ready.
+
+```ts
+await add({
+  url: 'https://cdn.example.com/genesis-1.m3u8',
+  type: 'hls', // preferred; .m3u8 path also auto-tags as hls
+  title: 'Genesis 1',
+});
+await seekTo(30); // stashed until READY, then applied (VOD)
+await play();
+```
+
+- Progressive: **WAV**, **mp3**, **m4a** (AAC), plus other Media3 / AVFoundation codecs  
+- Adaptive: **HLS VOD** with seek-after-ready (pending seek cleared on skip/reset)  
+- Explicitly out of v0.1: live DVR, DASH, SmoothStreaming, Cast, Android Auto browse, web player  
+
+API: [`docs/api.md`](./docs/api.md)
 
 ---
 
 ## Status
 
-**Lock-screen / notification / Bluetooth remotes (T4–T5), speech playlist + Playback\* events (T6), and native silence tracks (T7) are in the package.** Remotes are emit-only to JS; the example wires Play/Pause/Next/Prev. **Physical device QA** is still required before calling the full P0 background matrix “done.”
+**Lock-screen / notification / Bluetooth remotes (T4–T5), speech playlist + Playback\* events (T6), native silence tracks (T7), playback rate (T8), HLS (T9), and ambient dual-audio (T10) are in the package.** Remotes are emit-only to JS; the example wires Play/Pause/Next/Prev. **Physical device QA** is still required before calling the full P0 background matrix “done.”
 
 | Area | Status |
 | --- | --- |
@@ -145,8 +193,9 @@ Bed music under speech without crackle, without stealing audio focus, without hi
 | **`registerPlaybackService` + Remote\* → JS (headsets & lock screen)** | **Done (T5)** — device QA pending |
 | **Multi-track playlist + Playback\* events** | **Done (T6)** |
 | **Silence tracks** | **Done (T7)** |
-| HLS | Planned (T9; seek-after-ready) |
-| Ambient dual-audio | Planned (opt-in; required for Bible-ready 0.1.0) |
+| **Playback rate / progressive mutation** | **Done (T8)** |
+| **HLS + seek-after-ready** | **Done (T9)** |
+| **Ambient dual-audio** | **Done (T10)** — Bible-ready candidate; T11 device QA still required |
 
 See [`ROADMAP.md`](./ROADMAP.md). Star the repo and watch releases if you want the first Bible-ready cut.
 

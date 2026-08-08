@@ -18,6 +18,12 @@ import {
   setupPlayer,
   skipToNext,
   skipToPrevious,
+  setRate,
+  ambientSetPlaylist,
+  ambientSetVolume,
+  ambientPlay,
+  ambientFade,
+  ambientStop,
   updateNowPlayingMetadata,
 } from 'daily-react-native-player';
 import { useEffect, useState } from 'react';
@@ -34,8 +40,10 @@ import {
   View,
 } from 'react-native';
 
-const localWav = Image.resolveAssetSource(require('./assets/hynm.wav'));
-const localMp3 = Image.resolveAssetSource(require('./assets/instrumentals.mp3'));
+const john1 = Image.resolveAssetSource(require('./assets/john-1.mp3'));
+const john2 = Image.resolveAssetSource(require('./assets/john-2.mp3'));
+const john3 = Image.resolveAssetSource(require('./assets/john-3.mp3'));
+const ambientBed = Image.resolveAssetSource(require('./assets/instrumentals.mp3'));
 
 function requireAssetUri(
   asset: { uri?: string } | null | undefined,
@@ -46,6 +54,33 @@ function requireAssetUri(
     throw new Error(`${label} asset failed to resolve`);
   }
   return url;
+}
+
+function johnChapterTracks() {
+  return [
+    {
+      url: requireAssetUri(john1, 'John 1'),
+      title: 'John 1',
+      artist: 'Daily Bible',
+      album: 'Gospel of John',
+    },
+    {
+      url: requireAssetUri(john2, 'John 2'),
+      title: 'John 2',
+      artist: 'Daily Bible',
+      album: 'Gospel of John',
+    },
+    {
+      url: requireAssetUri(john3, 'John 3'),
+      title: 'John 3',
+      artist: 'Daily Bible',
+      album: 'Gospel of John',
+    },
+  ];
+}
+
+function ambientBedUrl(): string {
+  return requireAssetUri(ambientBed, 'Instrumentals');
 }
 
 /** Android 13+: media notification will not appear without this grant. */
@@ -221,29 +256,12 @@ export default function App() {
               ]}
               onPress={() =>
                 run(async () => {
-                  await add([
-                    {
-                      url: requireAssetUri(localWav, 'WAV'),
-                      title: 'Hymn',
-                      artist: 'Daily Bible',
-                      album: 'Example',
-                    },
-                    {
-                      url: requireAssetUri(localMp3, 'MP3'),
-                      title: 'Instrumentals',
-                      artist: 'Daily Bible',
-                      album: 'Example',
-                    },
-                    {
-                      url: requireAssetUri(localWav, 'WAV'),
-                      title: 'Hymn (again)',
-                      artist: 'Daily Bible',
-                      album: 'Example',
-                    },
-                  ]);
+                  await reset();
+                  await add(johnChapterTracks());
+                  await play();
                 })
               }>
-              <Text style={styles.btnLabel}>Load multi-track queue (3)</Text>
+              <Text style={styles.btnLabel}>Load John 1–3 playlist</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -255,27 +273,44 @@ export default function App() {
                 run(async () => {
                   await reset();
                   await add([
+                    johnChapterTracks()[0],
                     {
-                      url: requireAssetUri(localWav, 'WAV'),
-                      title: 'Hymn',
-                      artist: 'Daily Bible',
-                      album: 'Example',
+                      ...createSilenceTrack({ durationMs: 2000, id: 'gap-2s' }),
+                      title: 'Silence (2s)',
                     },
-                    {
-                      ...createSilenceTrack({ durationMs: 5000, id: 'gap-5s' }),
-                      title: 'Silence (5s)',
-                    },
-                    {
-                      url: requireAssetUri(localMp3, 'MP3'),
-                      title: 'Instrumentals',
-                      artist: 'Daily Bible',
-                      album: 'Example',
-                    },
+                    johnChapterTracks()[1],
                   ]);
                   await play();
                 })
               }>
-              <Text style={styles.btnLabel}>Load speech + silence gap</Text>
+              <Text style={styles.btnLabel}>John 1 + silence + John 2</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  await setRate(1.25);
+                  await play();
+                })
+              }>
+              <Text style={styles.btnLabel}>setRate 1.25× (silence stays 1×)</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  await setRate(1);
+                })
+              }>
+              <Text style={styles.btnLabel}>setRate 1×</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -287,14 +322,46 @@ export default function App() {
                 run(async () => {
                   await reset();
                   await add({
-                    url: requireAssetUri(localWav, 'WAV'),
-                    title: 'Hymn',
-                    artist: 'Daily Bible',
-                    album: 'Example',
+                    url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
+                    type: 'hls',
+                    title: 'HLS sample (Apple bipbop)',
+                    artist: 'Example',
+                    album: 'HLS',
                   });
+                  await seekTo(5);
+                  await play();
                 })
               }>
-              <Text style={styles.btnLabel}>Load WAV (reset + add)</Text>
+              <Text style={styles.btnLabel}>Load HLS VOD + seek 5s</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  await ambientSetPlaylist([ambientBedUrl()], true);
+                  await ambientSetVolume(0);
+                  await ambientPlay();
+                  await ambientFade(0.12, 1200);
+                })
+              }>
+              <Text style={styles.btnLabel}>Ambient under (instrumentals)</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  await ambientStop();
+                })
+              }>
+              <Text style={styles.btnLabel}>Ambient stop</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -305,15 +372,10 @@ export default function App() {
               onPress={() =>
                 run(async () => {
                   await reset();
-                  await add({
-                    url: requireAssetUri(localMp3, 'MP3'),
-                    title: 'Instrumentals',
-                    artist: 'Daily Bible',
-                    album: 'Example',
-                  });
+                  await add(johnChapterTracks()[0]);
                 })
               }>
-              <Text style={styles.btnLabel}>Load MP3 (reset + add)</Text>
+              <Text style={styles.btnLabel}>Load John 1 only</Text>
             </Pressable>
           </View>
         </Group>

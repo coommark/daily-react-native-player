@@ -39,4 +39,18 @@ describe('mergePlayerOptions', () => {
     const merged = mergePlayerOptions(DEFAULT_PLAYER_OPTIONS, { progressUpdateEventInterval: 0 });
     expect(merged.progressUpdateEventInterval).toBe(0);
   });
+
+  it('merges androidAudioMixMode', () => {
+    expect(DEFAULT_PLAYER_OPTIONS.androidAudioMixMode).toBe('default');
+    const merged = mergePlayerOptions(DEFAULT_PLAYER_OPTIONS, {
+      androidAudioMixMode: 'duckOthers',
+    });
+    expect(merged.androidAudioMixMode).toBe('duckOthers');
+    const ignored = mergePlayerOptions(DEFAULT_PLAYER_OPTIONS, {
+      androidAudioMixMode: 'bogus',
+    });
+    expect(ignored.androidAudioMixMode).toBe('default');
+    const map = optionsToNativeMap(merged);
+    expect(map.androidAudioMixMode).toBe('duckOthers');
+  });
 });

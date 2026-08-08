@@ -88,6 +88,7 @@ registerRootComponent(App);
 | `updateOptions(partial)` | Merges into **persisted** options; re-applies remotes / kill policy / metadata flags / progress interval. Survives `reset()`. |
 | `play()` / `pause()` | Transport; map to play-when-ready. `play` rejects `no_source`. Internal path — does **not** emit Remote*. |
 | `seekTo(seconds)` | Absolute position in **seconds** (≥ 0). |
+| `setRate(rate)` | Playback rate in **`[0.25, 4.0]`** (engine safety). Hosts clamp product UX (e.g. 0.75–1.0). Pitch-preserving. While a silence track is active, native applies effective **1.0** without clearing the desired rate; leaving silence restores it. `reset()` restores desired rate to **1.0**. |
 | `getProgress()` | `{ position, duration, buffered }` in seconds. |
 | `getPlaybackState()` | `none` \| `loading` \| `ready` \| `playing` \| `paused` \| `ended` \| `error` |
 | `getPlayWhenReady()` / `setPlayWhenReady(bool)` | Play intent. |
@@ -137,6 +138,7 @@ Precedence: forced overlay → track fields when `autoUpdateMetadata` → file t
 | `stopForegroundGracePeriod` | `5` (seconds) |
 | `autoHandleInterruptions` | `false` (emit `remote-duck` only; no auto pause/resume) |
 | `progressUpdateEventInterval` | `1` (seconds); `0` disables progress events |
+| `androidAudioMixMode` | `'default'` \| `'duckOthers'` (T10; iOS duck when ambient started) |
 
 ### Remote policy (T5)
 
@@ -183,7 +185,7 @@ type Track = {
   artist?: string;
   album?: string;
   artwork?: string;
-  type?: 'default' | 'hls' | 'silence'; // HLS rejected until T9; silence = T7
+  type?: 'default' | 'hls' | 'silence'; // silence = native gap; hls = VOD streaming
   duration?: number; // seconds; authoritative for silence
 };
 ```
@@ -209,4 +211,8 @@ Call `setupPlayer()` before transport (`reset` is the exception). New Architectu
 
 ## Not yet implemented
 
-Rate / mutation stress (T8), HLS (T9), ambient (T10) — see [`bible-acceptance.md`](./bible-acceptance.md) and [`ROADMAP.md`](../ROADMAP.md).
+Buffer knobs and remaining device QA (T11) — see [`bible-acceptance.md`](./bible-acceptance.md) and [`ROADMAP.md`](../ROADMAP.md).
+
+### Ambient
+
+See [`dual-audio.md`](./dual-audio.md): `ambientSetPlaylist`, `ambientPlay` / `pause` / `stop`, `ambientSetVolume`, `ambientFade`, option `androidAudioMixMode`.

@@ -27,7 +27,7 @@ Speech **playlist** used for chapter / verse sequences — see [`queue.md`](./qu
 - [x] `seekTo`
 - [x] `setPlayWhenReady` / `getPlayWhenReady`
 - [x] `getPlaybackState` / `getProgress`
-- [ ] `setRate` (app may clamp; pause/silence tracks use rate 1)
+- [x] `setRate` (app may clamp; pause/silence tracks use rate 1)
 
 ## Metadata
 
@@ -52,7 +52,7 @@ Speech **playlist** used for chapter / verse sequences — see [`queue.md`](./qu
 - [x] `progressUpdateEventInterval`
 - [x] Android `appKilledPlaybackBehavior: ContinuePlayback`, `stopForegroundGracePeriod`
 - [x] `androidAudioContentType: Speech` — via T3 engine attributes (Speech)
-- [ ] `androidAudioMixMode: 'default' | 'duckOthers'`
+- [x] `androidAudioMixMode: 'default' | 'duckOthers'`
 - [x] iOS Playback + SpokenAudio + DuckOthers + Bluetooth + AirPlay — Playback/SpokenAudio/BT/AirPlay from T3; DuckOthers = T10 mix
 - [ ] Buffer knobs
 - [x] `autoHandleInterruptions: false` — emit `remote-duck` only; no auto pause/resume when false
@@ -61,8 +61,8 @@ Speech **playlist** used for chapter / verse sequences — see [`queue.md`](./qu
 ## Sources
 
 - [x] Local / remote progressive URLs: WAV, mp3, m4a (AAC), plus other codecs Media3 / AVFoundation decode (T3)
-- [ ] HLS (`TrackType.HLS` / `'hls'`)
-- [ ] Seek-after-ready for HLS
+- [x] HLS (`TrackType.HLS` / `'hls'`)
+- [x] Seek-after-ready for HLS
 
 ## Silence (core)
 
@@ -73,9 +73,9 @@ See [`silence-tracks.md`](./silence-tracks.md) for product uses.
 
 ## Ambient (opt-in; required for Bible-ready)
 
-- [ ] `ambientSetPlaylist` / `ambientPlay` / `ambientPause` / `ambientStop`
-- [ ] `ambientSetVolume` / `ambientFade`
-- [ ] Lazy init; speech-only never creates ambient player
+- [x] `ambientSetPlaylist` / `ambientPlay` / `ambientPause` / `ambientStop`
+- [x] `ambientSetVolume` / `ambientFade`
+- [x] Lazy init; speech-only never creates ambient player
 
 ## Explicitly out of player scope
 

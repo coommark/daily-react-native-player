@@ -78,9 +78,9 @@ await add({ url: 'https://example.com/chapter.mp3', title: 'Chapter 1' });
 await play();
 
 // Local bundled asset — resolve before add
-const asset = Image.resolveAssetSource(require('./assets/hynm.wav'));
+const asset = Image.resolveAssetSource(require('./assets/john-1.mp3'));
 await reset();
-await add({ url: asset.uri });
+await add({ url: asset.uri, title: 'John 1' });
 await play();
 
 await seekTo(10);
@@ -131,12 +131,12 @@ const queue = await getQueue();
 const active = await getActiveTrackIndex();
 ```
 
-Full guide: [`queue.md`](./queue.md). Example app: **Load multi-track queue (3)** + Skip next/previous.
+Full guide: [`queue.md`](./queue.md). Example app: **Load John 1–3 playlist** + Skip next/previous.
 
 The example app demos local progressive fixtures under `example/assets/`:
 
-- `hynm.wav`
-- `instrumentals.mp3`
+- `john-1.mp3`, `john-2.mp3`, `john-3.mp3` (speech playlist)
+- `instrumentals.mp3` (ambient bed)
 
 ## Local development
 
@@ -183,8 +183,8 @@ The example depends on `daily-react-native-player` via `file:..` (npm-consumer s
 
 ### T3 / T4 smoke checklist
 
-- [x] Android: local WAV (`hynm.wav`) play/pause/seek
-- [x] Android: local MP3 (`instrumentals.mp3`) play/pause/seek
+- [x] Android: local John chapter MP3 play/pause/seek
+- [x] Android: ambient bed (`instrumentals.mp3`) under speech
 - [x] iOS: same
 - [x] `reset` then load again works
 - [x] Fast Refresh does not brick setup (idempotent `setupPlayer`)
@@ -198,10 +198,7 @@ Emulator audio fidelity is non-authoritative for P0 background QA. See the devic
 
 ## Next
 
-1. Complete T4/T5 physical device QA (remotes → JS while backgrounded)
-2. Progressive mutation + `setRate` (T8)
-3. HLS + seek-after-ready (T9)
+1. Complete T4/T5 physical device QA (remotes → JS while backgrounded) — T11
+2. Docs polish + publishable 0.1.0 (T12)
 
-Silence tracks (T7) are implemented — see [`silence-tracks.md`](./silence-tracks.md).
-
-See [`ROADMAP.md`](../ROADMAP.md).
+Core MVP + ambient (T8–T10) are implemented. See [`ROADMAP.md`](../ROADMAP.md).

@@ -18,9 +18,19 @@ export {
   getPlaybackState,
   getPlayWhenReady,
   setPlayWhenReady,
+  setRate,
   reset,
   getPlayerOptions,
 } from './Player';
+
+export {
+  ambientSetPlaylist,
+  ambientPlay,
+  ambientPause,
+  ambientStop,
+  ambientSetVolume,
+  ambientFade,
+} from './Ambient';
 
 export { State } from './State';
 export type { PlaybackState } from './State';

@@ -20,6 +20,7 @@ jest.mock('../DailyReactNativePlayerModule', () => ({
     getPlaybackState: jest.fn(async () => 'none'),
     getPlayWhenReady: jest.fn(async () => false),
     setPlayWhenReady: jest.fn(async () => {}),
+    setRate: jest.fn(async () => {}),
     reset: jest.fn(async () => {}),
   },
 }));
@@ -43,6 +44,7 @@ const {
   updateMetadataForTrack,
   getPlayerOptions,
   getQueue,
+  setRate,
   __resetPlayerJsStateForTests,
 } = require('../Player');
 const { createSilenceTrack } = require('../createSilenceTrack');
@@ -68,8 +70,30 @@ describe('Player validation', () => {
     );
   });
 
-  it('rejects HLS type', async () => {
-    await expect(add({ url: 'https://example.com/a.m3u8', type: 'hls' })).rejects.toEqual(
+  it('accepts HLS type and forwards to native', async () => {
+    await add({ url: 'https://example.com/a.m3u8', type: 'hls', title: 'Chapter' });
+    expect(NativeModule.add).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          url: 'https://example.com/a.m3u8',
+          type: 'hls',
+          title: 'Chapter',
+        }),
+      ],
+      null
+    );
+  });
+
+  it('tags .m3u8 urls as hls when type omitted', async () => {
+    await add({ url: 'https://cdn.example.com/ch.m3u8?token=1' });
+    expect(NativeModule.add).toHaveBeenCalledWith(
+      [expect.objectContaining({ url: 'https://cdn.example.com/ch.m3u8?token=1', type: 'hls' })],
+      null
+    );
+  });
+
+  it('rejects unknown track types', async () => {
+    await expect(add({ url: 'https://example.com/a.mp3', type: 'dash' })).rejects.toEqual(
       expect.objectContaining({ code: PlayerErrorCode.UnsupportedType })
     );
   });
@@ -92,6 +116,27 @@ describe('Player validation', () => {
   it('reset before setup is allowed', async () => {
     await expect(reset()).resolves.toBeUndefined();
     expect(NativeModule.reset).toHaveBeenCalled();
+    expect(NativeModule.updateOptions).toHaveBeenCalled();
+  });
+
+  it('rejects invalid setRate values', async () => {
+    await expect(setRate(0)).rejects.toEqual(
+      expect.objectContaining({ code: PlayerErrorCode.InvalidArgument })
+    );
+    await expect(setRate(0.1)).rejects.toEqual(
+      expect.objectContaining({ code: PlayerErrorCode.InvalidArgument })
+    );
+    await expect(setRate(4.1)).rejects.toEqual(
+      expect.objectContaining({ code: PlayerErrorCode.InvalidArgument })
+    );
+    await expect(setRate(Number.NaN)).rejects.toEqual(
+      expect.objectContaining({ code: PlayerErrorCode.InvalidArgument })
+    );
+  });
+
+  it('forwards valid setRate to native', async () => {
+    await setRate(1.25);
+    expect(NativeModule.setRate).toHaveBeenCalledWith(1.25);
   });
 
   it('forwards setup and play to native', async () => {
@@ -150,18 +195,29 @@ describe('Player validation', () => {
     expect(NativeModule.skip).toHaveBeenCalledWith(0);
   });
 
-  it('updateOptions persists across reset', async () => {
+  it('updateOptions persists across reset and re-pushes to native', async () => {
     await updateOptions({
       appKilledPlaybackBehavior: AppKilledPlaybackBehavior.PausePlayback,
       stopForegroundGracePeriod: 9,
       progressUpdateEventInterval: 0,
     });
+    NativeModule.updateOptions.mockClear();
     await reset();
     const opts = getPlayerOptions();
     expect(opts.appKilledPlaybackBehavior).toBe(AppKilledPlaybackBehavior.PausePlayback);
     expect(opts.stopForegroundGracePeriod).toBe(9);
     expect(opts.progressUpdateEventInterval).toBe(0);
-    expect(NativeModule.updateOptions).toHaveBeenCalled();
+    expect(NativeModule.reset).toHaveBeenCalled();
+    expect(NativeModule.updateOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appKilledPlaybackBehavior: AppKilledPlaybackBehavior.PausePlayback,
+        stopForegroundGracePeriod: 9,
+        progressUpdateEventInterval: 0,
+      })
+    );
+    const resetOrder = NativeModule.reset.mock.invocationCallOrder[0];
+    const optionsOrder = NativeModule.updateOptions.mock.invocationCallOrder[0];
+    expect(resetOrder).toBeLessThan(optionsOrder);
   });
 
   it('defaults progressUpdateEventInterval to 1', () => {

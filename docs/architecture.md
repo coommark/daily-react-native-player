@@ -31,7 +31,7 @@ example app → JS Player / Silence / Ambient(opt) → Expo Module
 | 6 | Silence = first-class queue items; native-owned sources (`silence:<ms>` wire; Android `SilenceMediaSource` + `mediaId=track.id`; iOS cached PCM WAV). Bind helper never decodes `silence:` as a media URI. See [`silence-tracks.md`](./silence-tracks.md). |
 | 7 | Ambient consumer-opt-in + lazy; required for Bible-ready 0.1.0 |
 | 8 | P0 background / metadata gates v0.1 device QA |
-| 9 | Progressive WAV/mp3/m4a (+ platform codecs) from T3; HLS streaming only (no DASH/SS) in v0.1 |
+| 9 | Progressive WAV/mp3/m4a (+ platform codecs) from T3; **HLS VOD** with seek-after-ready (T9); no DASH/SS/live DVR in v0.1 |
 | 10 | Support policy: **tested** Expo 57.x / RN 0.86.2 / React 19.2.3 / Node ≥22.13; **floor** `expo >=57` / `react-native >=0.86` / New Arch only; newer SDKs best-effort; Expo 53–56 unsupported. `expo` is a **required** peer (not optional) because Expo Modules Core is mandatory. |
 | 11 | Playback rate limits are app policy; player supports general `setRate` |
 | 12 | Native queue is the sole source of truth (JS is a thin facade) |
@@ -40,6 +40,7 @@ example app → JS Player / Silence / Ambient(opt) → Expo Module
 | 15 | MediaSession / Now Playing expose **single current item** (remotes stay emit-only) |
 | 16 | Prepare window (active ± 1–2) for chapter-scale queues |
 | 17 | Event observer policy: Remote* + lifecycle Playback* always-on; progress via `OnStartObserving` / `OnStopObserving` |
+| 18 | Mix mode `androidAudioMixMode` `default` \| `duckOthers`: speech owns focus; ambient never requests focus; iOS `.duckOthers` when ambient has started (T10) |
 
 ### ADR-12 — Native queue sole truth (T6)
 
@@ -115,6 +116,6 @@ When idle / not FGS-active, `OnDestroy` releases as before (T3 behavior).
 
 ### Ambient invariant (T10)
 
-Speech owns the sole MediaSession / Now Playing. Ambient never requests focus and never owns lock-screen metadata.
+Speech owns the sole MediaSession / Now Playing. Ambient never requests focus and never owns lock-screen metadata. Lazy `AmbientEngine` (second ExoPlayer / AVPlayer) created only on first ambient API. See ADR-18 and [`dual-audio.md`](./dual-audio.md).
 
 Detail expands as tickets land. See also `docs/background-playback.md` and `docs/dual-audio.md`.

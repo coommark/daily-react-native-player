@@ -22,6 +22,11 @@ export type PlayerOptions = {
    * `0` disables progress events. Default `1` (Bible).
    */
   progressUpdateEventInterval: number;
+  /**
+   * Mix with other apps when ambient is active.
+   * `duckOthers` adds iOS `.duckOthers`; Android ambient never requests focus.
+   */
+  androidAudioMixMode: 'default' | 'duckOthers';
 };
 
 export type PlayerOptionsInput = Partial<{
@@ -31,6 +36,7 @@ export type PlayerOptionsInput = Partial<{
   stopForegroundGracePeriod: number;
   autoHandleInterruptions: boolean;
   progressUpdateEventInterval: number;
+  androidAudioMixMode: 'default' | 'duckOthers';
 }>;
 
 export const DEFAULT_PLAYER_OPTIONS: PlayerOptions = {
@@ -40,6 +46,7 @@ export const DEFAULT_PLAYER_OPTIONS: PlayerOptions = {
   stopForegroundGracePeriod: 5,
   autoHandleInterruptions: false,
   progressUpdateEventInterval: 1,
+  androidAudioMixMode: 'default',
 };
 
 const VALID_KILL = new Set<string>(Object.values(AppKilledPlaybackBehavior));
@@ -116,6 +123,10 @@ export function mergePlayerOptions(
     next.progressUpdateEventInterval = partial.progressUpdateEventInterval;
   }
 
+  if (partial.androidAudioMixMode === 'default' || partial.androidAudioMixMode === 'duckOthers') {
+    next.androidAudioMixMode = partial.androidAudioMixMode;
+  }
+
   return next;
 }
 
@@ -128,5 +139,6 @@ export function optionsToNativeMap(options: PlayerOptions): Record<string, unkno
     stopForegroundGracePeriod: options.stopForegroundGracePeriod,
     autoHandleInterruptions: options.autoHandleInterruptions,
     progressUpdateEventInterval: options.progressUpdateEventInterval,
+    androidAudioMixMode: options.androidAudioMixMode,
   };
 }

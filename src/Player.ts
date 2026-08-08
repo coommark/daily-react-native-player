@@ -77,13 +77,6 @@ function isSilenceCandidate(track: Track): boolean {
 }
 
 function validateTrack(track: Track): { url: string; payload: Record<string, unknown> } {
-  if (track.type === 'hls') {
-    throw new PlayerException(
-      PlayerErrorCode.UnsupportedType,
-      'HLS is not supported until T9; use progressive urls'
-    );
-  }
-
   if (isSilenceCandidate(track)) {
     const silence = canonicalizeSilence(track);
     const payload: Record<string, unknown> = {
@@ -101,12 +94,36 @@ function validateTrack(track: Track): { url: string; payload: Record<string, unk
   if (url.toLowerCase().startsWith('content:') && Platform.OS === 'ios') {
     throw new PlayerException(PlayerErrorCode.UnsupportedUrl, 'content:// urls are Android-only');
   }
+
+  let type: TrackType | undefined =
+    track.type === 'hls' || track.type === 'default' ? track.type : undefined;
+  if (!type && looksLikeHlsUrl(url)) {
+    type = 'hls';
+  }
+  if (
+    track.type != null &&
+    track.type !== 'hls' &&
+    track.type !== 'default' &&
+    track.type !== 'silence'
+  ) {
+    throw new PlayerException(
+      PlayerErrorCode.UnsupportedType,
+      `Unsupported track type: ${String(track.type)}`
+    );
+  }
+
   const payload: Record<string, unknown> = { url };
+  if (type) payload.type = type;
   if (typeof track.id === 'string' && track.id.length > 0) {
     payload.id = track.id;
   }
   applyMetadataToPayload(track, payload);
   return { url, payload };
+}
+
+function looksLikeHlsUrl(url: string): boolean {
+  const path = url.split(/[?#]/)[0]?.toLowerCase() ?? '';
+  return path.endsWith('.m3u8');
 }
 
 function normalizeTrackFromNative(
@@ -424,10 +441,31 @@ export async function setPlayWhenReady(value: boolean): Promise<void> {
   }
 }
 
+/**
+ * Set playback rate. Engine accepts `[0.25, 4.0]`; hosts clamp product UX.
+ * While a silence track is active, native forces effective rate `1.0` without
+ * clearing the desired rate.
+ */
+export async function setRate(rate: number): Promise<void> {
+  if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0.25 || rate > 4.0) {
+    throw new PlayerException(
+      PlayerErrorCode.InvalidArgument,
+      'setRate requires a finite rate in [0.25, 4.0]'
+    );
+  }
+  try {
+    await ensureNative().setRate(rate);
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
 export async function reset(): Promise<void> {
   forcedNowPlaying = null;
   try {
-    await ensureNative().reset();
+    const native = ensureNative();
+    await native.reset();
+    await native.updateOptions(optionsToNativeMap(persistedOptions));
   } catch (e) {
     rethrowNative(e);
   }

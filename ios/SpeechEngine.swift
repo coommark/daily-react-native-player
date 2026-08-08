@@ -68,6 +68,9 @@ final class SpeechEngine {
   private var queueEpoch: Int64 = 0
   private var lastEmittedState: String?
   private var lastPlayWhenReady: Bool?
+  /// Host-requested rate; silence active tracks force effective 1.0.
+  private var desiredRate: Float = 1.0
+  private var audioMixMode: String = "default"
 
   private init() {}
 
@@ -113,6 +116,18 @@ final class SpeechEngine {
     } else if let interval = options["progressUpdateEventInterval"] as? Int, interval >= 0 {
       progressUpdateEventInterval = Double(interval)
       refreshProgressObserver()
+    }
+    if let mix = options["androidAudioMixMode"] as? String,
+       mix == "default" || mix == "duckOthers" {
+      audioMixMode = mix
+      try? applyMixSessionIfNeeded()
+    }
+  }
+
+  func applyMixSessionIfNeeded() throws {
+    try configureAudioSession()
+    if AmbientEngine.shared.hasBeenStarted || hasSource {
+      try activateAudioSession()
     }
   }
 
@@ -268,6 +283,19 @@ final class SpeechEngine {
     NowPlayingController.shared.applyTrackMetadata(metadata, force: true)
   }
 
+  func setRate(_ rate: Double) throws {
+    try ensureInitialized()
+    guard rate.isFinite, rate >= 0.25, rate <= 4.0 else {
+      throw Exception(
+        name: "invalid_argument",
+        description: "setRate requires a finite rate in [0.25, 4.0]",
+        code: "invalid_argument"
+      )
+    }
+    desiredRate = Float(rate)
+    applyEffectiveRate()
+  }
+
   func play() throws {
     try ensureInitialized()
     guard hasSource else {
@@ -286,6 +314,7 @@ final class SpeechEngine {
       player?.seek(to: .zero)
     }
     player?.play()
+    applyEffectiveRate()
     NowPlayingController.shared.syncFromEngine()
     emitStateIfChanged()
     refreshProgressObserver()
@@ -374,6 +403,7 @@ final class SpeechEngine {
     if value {
       try activateAudioSession()
       player?.play()
+      applyEffectiveRate()
       fgsProxyActive = true
     } else {
       player?.pause()
@@ -399,6 +429,7 @@ final class SpeechEngine {
     pendingSeekSeconds = nil
     lastErrorCode = nil
     playWhenReadyFlag = false
+    desiredRate = 1.0
     NowPlayingController.shared.clearDisplay()
     emitActiveTrackChanged(index: nil, track: nil, lastIndex: lastIdx, lastTrack: last)
     emitPlayWhenReadyIfChanged(false)
@@ -419,6 +450,7 @@ final class SpeechEngine {
   func releaseEngine() {
     tearDownItemObservers()
     removeProgressObserver()
+    AmbientEngine.shared.releaseEngine()
     NowPlayingController.shared.tearDown()
     player?.pause()
     player?.replaceCurrentItem(with: nil)
@@ -430,8 +462,27 @@ final class SpeechEngine {
     lastErrorCode = nil
     playWhenReadyFlag = false
     fgsProxyActive = false
+    desiredRate = 1.0
     queue = []
     activeIndex = -1
+  }
+
+  private func effectiveRate() -> Float {
+    if activeTrackOrNil()?.isSilence == true {
+      return 1.0
+    }
+    return desiredRate
+  }
+
+  private func applyEffectiveRate() {
+    guard let player else { return }
+    let rate = effectiveRate()
+    if let item = playerItem {
+      item.audioTimePitchAlgorithm = .timeDomain
+    }
+    if playWhenReadyFlag {
+      player.rate = rate
+    }
   }
 
   private func activateIndex(
@@ -476,13 +527,16 @@ final class SpeechEngine {
       player.volume = 0
     }
     let item = AVPlayerItem(url: mediaURL)
+    item.audioTimePitchAlgorithm = .timeDomain
     playerItem = item
     player?.replaceCurrentItem(with: item)
     hasSource = true
+    pendingSeekSeconds = nil
     observeItem(item)
     if playWhenReadyFlag {
       player?.play()
     }
+    applyEffectiveRate()
     if autoUpdateMetadata {
       NowPlayingController.shared.applyTrackMetadata(track.toDictionary().compactMapValues { $0 })
     }
@@ -731,10 +785,14 @@ final class SpeechEngine {
 
   private func configureAudioSession() throws {
     let session = AVAudioSession.sharedInstance()
+    var options: AVAudioSession.CategoryOptions = [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay]
+    if audioMixMode == "duckOthers", AmbientEngine.shared.hasBeenStarted {
+      options.insert(.duckOthers)
+    }
     try session.setCategory(
       .playback,
       mode: .spokenAudio,
-      options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay]
+      options: options
     )
   }
 

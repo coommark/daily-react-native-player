@@ -16,7 +16,9 @@ import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.SilenceMediaSource
@@ -109,6 +111,9 @@ object SpeechEngine {
   private var progressUpdateEventInterval = 1.0
 
   @Volatile
+  private var audioMixMode: String = "default"
+
+  @Volatile
   private var capabilities: Set<String> =
     setOf("play", "pause", "stop", "skipToNext", "skipToPrevious")
 
@@ -122,6 +127,8 @@ object SpeechEngine {
   private var lastPlayWhenReady: Boolean? = null
   private var progressRunnable: Runnable? = null
   private var advancingInternally = false
+  /** Host-requested rate; silence active tracks force effective 1.0. */
+  private var desiredRate: Float = 1.0f
 
   private var audioFocusRequest: AudioFocusRequest? = null
 
@@ -270,6 +277,12 @@ object SpeechEngine {
       "continue-playback" -> killBehavior = KillBehavior.CONTINUE
       "pause-playback" -> killBehavior = KillBehavior.PAUSE
       "stop-playback-and-remove-notification" -> killBehavior = KillBehavior.STOP_REMOVE
+    }
+    when (options["androidAudioMixMode"] as? String) {
+      "default", "duckOthers" -> {
+        audioMixMode = options["androidAudioMixMode"] as String
+        applyMixSessionIfNeeded()
+      }
     }
     val caps = options["capabilities"]
     if (caps is List<*>) {
@@ -526,6 +539,21 @@ object SpeechEngine {
     }
   }
 
+  fun setRate(rate: Double) {
+    ensureInitialized()
+    if (!rate.isFinite() || rate < 0.25 || rate > 4.0) {
+      throw CodedException(
+        "invalid_argument",
+        "setRate requires a finite rate in [0.25, 4.0]",
+        null
+      )
+    }
+    runOnMainBlocking {
+      desiredRate = rate.toFloat()
+      applyEffectiveRateLocked()
+    }
+  }
+
   fun play() {
     ensureInitialized()
     runOnMainBlocking {
@@ -539,6 +567,7 @@ object SpeechEngine {
       if (exo.playbackState == Player.STATE_ENDED) {
         exo.seekTo(0)
       }
+      applyEffectiveRateLocked()
       exo.playWhenReady = true
       exo.play()
       emitPlayWhenReadyIfChangedLocked(true)
@@ -647,6 +676,7 @@ object SpeechEngine {
       queueEpoch++
       queue.clear()
       activeIndex = -1
+      desiredRate = 1.0f
       clearPlayerLocked()
       emitActiveTrackChangedLocked(null, null, lastIdx, last)
       emitPlayWhenReadyIfChangedLocked(false)
@@ -665,11 +695,17 @@ object SpeechEngine {
     release()
   }
 
+  fun applyMixSessionIfNeeded() {
+    // Ambient never requests focus. Mix mode is stored for host/session parity with iOS;
+    // Android speech remains the sole focus owner.
+  }
+
   fun release() {
     cancelArtworkLoad()
     runOnMainBlocking {
       stopProgressTimerLocked()
       abandonAudioFocus()
+      AmbientEngine.release()
       SessionHolder.releaseSession()
       sessionPlayer = null
       player?.release()
@@ -678,9 +714,19 @@ object SpeechEngine {
       hasSource = false
       pendingSeekSeconds = null
       lastErrorCode = null
+      desiredRate = 1.0f
       queue.clear()
       activeIndex = -1
     }
+  }
+
+  private fun effectiveRateLocked(): Float {
+    return if (activeTrackOrNull()?.isSilence == true) 1.0f else desiredRate
+  }
+
+  private fun applyEffectiveRateLocked() {
+    val exo = player ?: return
+    exo.playbackParameters = PlaybackParameters(effectiveRateLocked(), /* pitch= */ 1.0f)
   }
 
   private fun activateIndexLocked(
@@ -692,8 +738,10 @@ object SpeechEngine {
     val track = queue.getOrNull(index) ?: return
     activeIndex = index
     lastErrorCode = null
+    pendingSeekSeconds = null
     applyTrackToPlayerLocked(track, preservePosition = false)
     hasSource = true
+    applyEffectiveRateLocked()
     if (emitActive) {
       emitActiveTrackChangedLocked(index, track, lastIndex, lastTrack)
     }
@@ -735,13 +783,15 @@ object SpeechEngine {
         }
         exo.setMediaSource(source, position)
       } else {
-        val item =
+        val builder =
           MediaItem.Builder()
             .setMediaId(track.id)
             .setUri(Uri.parse(track.url))
             .setMediaMetadata(metadata)
-            .build()
-        exo.setMediaItem(item, position)
+        if (track.type == "hls" || looksLikeHlsUrl(track.url)) {
+          builder.setMimeType(MimeTypes.APPLICATION_M3U8)
+        }
+        exo.setMediaItem(builder.build(), position)
       }
       exo.prepare()
       exo.playWhenReady = pwr
@@ -1145,6 +1195,11 @@ object SpeechEngine {
     if (Log.isLoggable(TAG, Log.DEBUG)) {
       Log.d(TAG, message)
     }
+  }
+
+  private fun looksLikeHlsUrl(url: String): Boolean {
+    val path = url.substringBefore('?').substringBefore('#').lowercase()
+    return path.endsWith(".m3u8")
   }
 
   private fun <T> runOnMainBlocking(block: () -> T): T {

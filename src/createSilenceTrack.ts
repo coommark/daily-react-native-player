@@ -80,13 +80,6 @@ export function canonicalizeSilence(track: Track): {
   album?: string;
   artwork?: string;
 } {
-  if (track.type === 'hls') {
-    throw new PlayerException(
-      PlayerErrorCode.UnsupportedType,
-      'HLS is not supported until T9; use progressive urls'
-    );
-  }
-
   const url = typeof track.url === 'string' ? track.url.trim() : '';
   const urlMatch = SILENCE_URL_RE.exec(url);
   const urlMs = urlMatch ? Number(urlMatch[1]) : null;

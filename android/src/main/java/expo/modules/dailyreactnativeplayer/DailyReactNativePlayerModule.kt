@@ -117,8 +117,52 @@ class DailyReactNativePlayerModule : Module() {
       SpeechEngine.setPlayWhenReady(value)
     }
 
+    AsyncFunction("setRate") { rate: Double ->
+      SpeechEngine.setRate(rate)
+    }
+
     AsyncFunction("reset") {
       SpeechEngine.reset()
+    }
+
+    AsyncFunction("ambientSetPlaylist") { urls: List<String>, loopAll: Boolean? ->
+      val reactContext =
+        appContext.reactContext
+          ?: throw CodedException("not_initialized", "React context unavailable", null)
+      AmbientEngine.ensure(reactContext)
+      AmbientEngine.setPlaylist(urls, loopAll ?: false)
+    }
+
+    AsyncFunction("ambientPlay") {
+      val reactContext =
+        appContext.reactContext
+          ?: throw CodedException("not_initialized", "React context unavailable", null)
+      AmbientEngine.ensure(reactContext)
+      AmbientEngine.play()
+    }
+
+    AsyncFunction("ambientPause") {
+      AmbientEngine.pause()
+    }
+
+    AsyncFunction("ambientStop") {
+      AmbientEngine.stop()
+    }
+
+    AsyncFunction("ambientSetVolume") { level: Double ->
+      val reactContext =
+        appContext.reactContext
+          ?: throw CodedException("not_initialized", "React context unavailable", null)
+      AmbientEngine.ensure(reactContext)
+      AmbientEngine.setVolume(level)
+    }
+
+    AsyncFunction("ambientFade") { target: Double, durationMs: Double ->
+      val reactContext =
+        appContext.reactContext
+          ?: throw CodedException("not_initialized", "React context unavailable", null)
+      AmbientEngine.ensure(reactContext)
+      AmbientEngine.fade(target, durationMs)
     }
   }
 }

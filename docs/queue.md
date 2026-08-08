@@ -71,7 +71,7 @@ await add([
 ]);
 await play();
 
-// Host policy: detect silence for setRate(1) when speech rate < 1 (T8)
+// Native forces rate 1× while silence is active; desired setRate restores on speech
 ```
 
 ## API map
@@ -82,6 +82,7 @@ await play();
 | Inspect | `getQueue`, `getActiveTrack`, `getActiveTrackIndex` |
 | Navigate | `skip`, `skipToNext`, `skipToPrevious` |
 | Edit | `remove(indexes)` |
+| Rate | `setRate(rate)` — survives progressive mutation; silence plays at 1× |
 | Clear | `reset()` (options persist) |
 | UI / service | `Event.Playback*` + `Event.Remote*` via `addEventListener` |
 

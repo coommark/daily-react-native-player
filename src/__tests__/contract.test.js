@@ -1,5 +1,5 @@
 /**
- * Contract tests — planned Bible surface + implemented T3–T7 exports.
+ * Contract tests — planned Bible surface + implemented T3–T10 exports.
  */
 
 const PLANNED_PUBLIC_SURFACE = [
@@ -80,6 +80,17 @@ const IMPLEMENTED_T6 = [
 
 const IMPLEMENTED_T7 = ['createSilenceTrack', 'isSilenceTrack', 'MAX_SILENCE_DURATION_MS'];
 
+const IMPLEMENTED_T8 = ['setRate'];
+
+const IMPLEMENTED_T10 = [
+  'ambientSetPlaylist',
+  'ambientPlay',
+  'ambientPause',
+  'ambientStop',
+  'ambientSetVolume',
+  'ambientFade',
+];
+
 jest.mock('../DailyReactNativePlayerModule', () => ({
   __esModule: true,
   default: {
@@ -102,7 +113,14 @@ jest.mock('../DailyReactNativePlayerModule', () => ({
     getPlaybackState: jest.fn(async () => 'none'),
     getPlayWhenReady: jest.fn(async () => false),
     setPlayWhenReady: jest.fn(async () => {}),
+    setRate: jest.fn(async () => {}),
     reset: jest.fn(async () => {}),
+    ambientSetPlaylist: jest.fn(async () => {}),
+    ambientPlay: jest.fn(async () => {}),
+    ambientPause: jest.fn(async () => {}),
+    ambientStop: jest.fn(async () => {}),
+    ambientSetVolume: jest.fn(async () => {}),
+    ambientFade: jest.fn(async () => {}),
     addListener: jest.fn(() => ({ remove: jest.fn() })),
   },
 }));
@@ -177,5 +195,21 @@ describe('daily-react-native-player contract', () => {
     expect(gap).toEqual({ type: 'silence', url: 'silence:800', duration: 0.8 });
     expect(api.isSilenceTrack(gap)).toBe(true);
     expect(api.isSilenceTrack({ url: 'https://example.com/a.mp3' })).toBe(false);
+  });
+
+  it('exports implemented T8 API', () => {
+    const api = require('../index');
+    for (const name of IMPLEMENTED_T8) {
+      expect(api[name]).toBeDefined();
+    }
+    expect(typeof api.setRate).toBe('function');
+  });
+
+  it('exports implemented T10 ambient API', () => {
+    const api = require('../index');
+    for (const name of IMPLEMENTED_T10) {
+      expect(api[name]).toBeDefined();
+      expect(typeof api[name]).toBe('function');
+    }
   });
 });

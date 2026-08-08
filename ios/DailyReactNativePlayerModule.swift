@@ -108,8 +108,40 @@ public class DailyReactNativePlayerModule: Module {
       try SpeechEngine.shared.setPlayWhenReady(value)
     }.runOnQueue(.main)
 
+    AsyncFunction("setRate") { (rate: Double) in
+      try SpeechEngine.shared.setRate(rate)
+    }.runOnQueue(.main)
+
     AsyncFunction("reset") {
       SpeechEngine.shared.reset()
+    }.runOnQueue(.main)
+
+    AsyncFunction("ambientSetPlaylist") { (urls: [String], loopAll: Bool?) in
+      AmbientEngine.shared.ensure()
+      try AmbientEngine.shared.setPlaylist(urls: urls, loopAll: loopAll ?? false)
+    }.runOnQueue(.main)
+
+    AsyncFunction("ambientPlay") {
+      AmbientEngine.shared.ensure()
+      try AmbientEngine.shared.play()
+    }.runOnQueue(.main)
+
+    AsyncFunction("ambientPause") {
+      AmbientEngine.shared.pause()
+    }.runOnQueue(.main)
+
+    AsyncFunction("ambientStop") {
+      try AmbientEngine.shared.stop()
+    }.runOnQueue(.main)
+
+    AsyncFunction("ambientSetVolume") { (level: Double) in
+      AmbientEngine.shared.ensure()
+      try AmbientEngine.shared.setVolume(level)
+    }.runOnQueue(.main)
+
+    AsyncFunction("ambientFade") { (target: Double, durationMs: Double) in
+      AmbientEngine.shared.ensure()
+      try AmbientEngine.shared.fade(target: target, durationMs: durationMs)
     }.runOnQueue(.main)
   }
 }

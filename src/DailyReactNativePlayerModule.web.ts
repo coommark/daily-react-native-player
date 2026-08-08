@@ -95,7 +95,35 @@ class DailyReactNativePlayerModule extends NativeModule {
     unsupported();
   }
 
+  async setRate(_rate: number): Promise<void> {
+    unsupported();
+  }
+
   async reset(): Promise<void> {
+    unsupported();
+  }
+
+  async ambientSetPlaylist(_urls: string[], _loopAll?: boolean | null): Promise<void> {
+    unsupported();
+  }
+
+  async ambientPlay(): Promise<void> {
+    unsupported();
+  }
+
+  async ambientPause(): Promise<void> {
+    unsupported();
+  }
+
+  async ambientStop(): Promise<void> {
+    unsupported();
+  }
+
+  async ambientSetVolume(_level: number): Promise<void> {
+    unsupported();
+  }
+
+  async ambientFade(_target: number, _durationMs: number): Promise<void> {
     unsupported();
   }
 }
