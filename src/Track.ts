@@ -1,10 +1,12 @@
 /**
- * Progressive track shape (T3). Queue semantics arrive in T6.
+ * Progressive track shape. Queue semantics = T6.
  * `type: 'hls'` is reserved and rejected until T9.
  */
 export type TrackType = 'default' | 'hls';
 
 export type Track = {
+  /** Stable identity; assigned on add if omitted; always present in getQueue / events. */
+  id?: string;
   url: string;
   title?: string;
   artist?: string;

@@ -4,20 +4,15 @@ import {
   getPlayWhenReady,
   pause,
   play,
+  skipToNext,
+  skipToPrevious,
 } from 'daily-react-native-player';
 
 /**
  * JS playback service — owns remote policy (lock screen / notification / headset).
  * Registered from example/index.ts before registerRootComponent.
- *
- * In a debug build, watch the Metro terminal for `[playbackService]` lines when
- * you tap lock-screen / notification controls.
  */
 export async function playbackService(): Promise<void> {
-  if (__DEV__) {
-    console.log('[playbackService] registered — waiting for Remote* events');
-  }
-
   addEventListener(Event.RemotePlay, () => {
     void safe('RemotePlay', () => play());
   });
@@ -38,14 +33,10 @@ export async function playbackService(): Promise<void> {
     });
   });
   addEventListener(Event.RemoteNext, () => {
-    void safe('RemoteNext', async () => {
-      // no-op until T6 skip*
-    });
+    void safe('RemoteNext', () => skipToNext());
   });
   addEventListener(Event.RemotePrevious, () => {
-    void safe('RemotePrevious', async () => {
-      // no-op until T6 skip*
-    });
+    void safe('RemotePrevious', () => skipToPrevious());
   });
   addEventListener(Event.RemoteDuck, (event) => {
     if (__DEV__) {
@@ -55,9 +46,6 @@ export async function playbackService(): Promise<void> {
 }
 
 async function safe(label: string, fn: () => void | Promise<void>): Promise<void> {
-  if (__DEV__) {
-    console.log(`[playbackService] ${label}`);
-  }
   try {
     await fn();
   } catch (e) {

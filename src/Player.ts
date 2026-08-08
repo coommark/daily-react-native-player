@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import NativeModule from './DailyReactNativePlayerModule';
-import { mergeForcedMetadata, trackToNativePayload, type NowPlayingMetadata } from './Metadata';
+import { mergeForcedMetadata, type NowPlayingMetadata } from './Metadata';
 import {
   DEFAULT_PLAYER_OPTIONS,
   mergePlayerOptions,
@@ -19,10 +19,7 @@ let persistedOptions: PlayerOptions = {
   capabilities: [...DEFAULT_PLAYER_OPTIONS.capabilities],
 };
 
-/** Current track metadata (single-source T3/T4). Cleared on reset. */
-let currentTrackMeta: NowPlayingMetadata | null = null;
-
-/** Forced now-playing override. Cleared on reset. */
+/** Forced now-playing overlay. Cleared on reset or when adding to an empty queue. */
 let forcedNowPlaying: NowPlayingMetadata | null = null;
 
 function ensureNative(): typeof NativeModule {
@@ -51,8 +48,6 @@ function rethrowNative(error: unknown): never {
 }
 
 function assertNewArchitecture(): void {
-  // Bridgeless / New Arch is required. TurboModuleProxy absence is a weak signal on some hosts;
-  // prefer global flag when present.
   const g = globalThis as { RN$Bridgeless?: boolean; __turboModuleProxy?: unknown };
   if (g.RN$Bridgeless === false) {
     throw new PlayerException(
@@ -60,6 +55,50 @@ function assertNewArchitecture(): void {
       'daily-react-native-player requires the New Architecture'
     );
   }
+}
+
+function validateTrack(track: Track): { url: string; payload: Record<string, unknown> } {
+  if (track.type === 'hls') {
+    throw new PlayerException(
+      PlayerErrorCode.UnsupportedType,
+      'HLS is not supported until T9; use progressive urls'
+    );
+  }
+  const url = normalizeTrackUrl(track.url);
+  if (url.toLowerCase().startsWith('content:') && Platform.OS === 'ios') {
+    throw new PlayerException(PlayerErrorCode.UnsupportedUrl, 'content:// urls are Android-only');
+  }
+  const payload: Record<string, unknown> = { url };
+  if (typeof track.id === 'string' && track.id.length > 0) {
+    payload.id = track.id;
+  }
+  if (persistedOptions.autoUpdateMetadata) {
+    if (typeof track.title === 'string' && track.title.length > 0) payload.title = track.title;
+    if (typeof track.artist === 'string' && track.artist.length > 0) payload.artist = track.artist;
+    if (typeof track.album === 'string' && track.album.length > 0) payload.album = track.album;
+    if (typeof track.artwork === 'string' && track.artwork.length > 0)
+      payload.artwork = track.artwork;
+  }
+  return { url, payload };
+}
+
+function normalizeTrackFromNative(
+  raw: Record<string, unknown> | null | undefined
+): Track | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+  const url = raw.url;
+  if (typeof url !== 'string' || !url) {
+    return undefined;
+  }
+  const track: Track = { url };
+  if (typeof raw.id === 'string') track.id = raw.id;
+  if (typeof raw.title === 'string') track.title = raw.title;
+  if (typeof raw.artist === 'string') track.artist = raw.artist;
+  if (typeof raw.album === 'string') track.album = raw.album;
+  if (typeof raw.artwork === 'string') track.artwork = raw.artwork;
+  return track;
 }
 
 export function getPlayerOptions(): PlayerOptions {
@@ -90,46 +129,133 @@ export async function updateOptions(options?: PlayerOptionsInput): Promise<void>
   }
 }
 
-export async function add(trackOrTracks: Track | Track[]): Promise<void> {
+/**
+ * Append tracks, or insert before `insertBeforeIndex`.
+ * Returns inserted indices. Empty queue + add loads the first item.
+ * Hosts that previously relied on replace must `reset()` then `add()`.
+ */
+export async function add(
+  trackOrTracks: Track | Track[],
+  insertBeforeIndex?: number
+): Promise<number[]> {
   const tracks = Array.isArray(trackOrTracks) ? trackOrTracks : [trackOrTracks];
   if (tracks.length === 0) {
     throw new PlayerException(PlayerErrorCode.InvalidArgument, 'add() requires at least one track');
   }
-  const track = tracks[0];
-  if (track.type === 'hls') {
+  if (
+    insertBeforeIndex !== undefined &&
+    (!Number.isInteger(insertBeforeIndex) || insertBeforeIndex < 0)
+  ) {
     throw new PlayerException(
-      PlayerErrorCode.UnsupportedType,
-      'HLS is not supported until T9; use progressive urls'
+      PlayerErrorCode.InvalidArgument,
+      'insertBeforeIndex must be a non-negative integer'
     );
   }
-  const url = normalizeTrackUrl(track.url);
-  // content:// is Android-only
-  if (url.toLowerCase().startsWith('content:') && Platform.OS === 'ios') {
-    throw new PlayerException(PlayerErrorCode.UnsupportedUrl, 'content:// urls are Android-only');
-  }
 
-  currentTrackMeta = {
-    title: track.title,
-    artist: track.artist,
-    album: track.album,
-    artwork: track.artwork,
-  };
-  // New add clears forced override unless host re-applies updateNowPlayingMetadata
-  forcedNowPlaying = null;
-
-  const payload = trackToNativePayload(
-    url,
-    {
-      title: track.title,
-      artist: track.artist,
-      album: track.album,
-      artwork: track.artwork,
-    },
-    persistedOptions.autoUpdateMetadata
+  const payloads = tracks.map(
+    (t) =>
+      validateTrack(t).payload as {
+        url: string;
+        id?: string;
+        title?: string;
+        artist?: string;
+        album?: string;
+        artwork?: string;
+      }
   );
 
   try {
-    await ensureNative().add(payload);
+    const native = ensureNative();
+    const prevIndex = await native.getActiveTrackIndex();
+    const wasEmpty = prevIndex == null;
+    const indices = await native.add(
+      payloads,
+      insertBeforeIndex === undefined ? null : insertBeforeIndex
+    );
+    if (wasEmpty) {
+      forcedNowPlaying = null;
+    }
+    return Array.isArray(indices) ? indices.map((n) => Number(n)) : [];
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
+export async function remove(indexes: number | number[]): Promise<void> {
+  const list = Array.isArray(indexes) ? indexes : [indexes];
+  if (list.length === 0) {
+    return;
+  }
+  for (const i of list) {
+    if (!Number.isInteger(i) || i < 0) {
+      throw new PlayerException(
+        PlayerErrorCode.InvalidArgument,
+        'remove() indexes must be non-negative integers'
+      );
+    }
+  }
+  try {
+    await ensureNative().remove(list);
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
+export async function getQueue(): Promise<Track[]> {
+  try {
+    const raw = await ensureNative().getQueue();
+    return (raw ?? []).map((t) => normalizeTrackFromNative(t)).filter((t): t is Track => !!t);
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
+export async function getActiveTrack(): Promise<Track | undefined> {
+  try {
+    const raw = await ensureNative().getActiveTrack();
+    return normalizeTrackFromNative(raw ?? undefined);
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
+export async function getActiveTrackIndex(): Promise<number | undefined> {
+  try {
+    const index = await ensureNative().getActiveTrackIndex();
+    if (index == null || typeof index !== 'number' || !Number.isFinite(index)) {
+      return undefined;
+    }
+    return index;
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
+export async function skip(index: number): Promise<void> {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new PlayerException(
+      PlayerErrorCode.InvalidArgument,
+      'skip() requires a non-negative index'
+    );
+  }
+  try {
+    await ensureNative().skip(index);
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
+export async function skipToNext(): Promise<void> {
+  try {
+    await ensureNative().skipToNext();
+  } catch (e) {
+    rethrowNative(e);
+  }
+}
+
+export async function skipToPrevious(): Promise<void> {
+  try {
+    await ensureNative().skipToPrevious();
   } catch (e) {
     rethrowNative(e);
   }
@@ -154,10 +280,10 @@ export async function updateMetadataForTrack(
   index: number,
   metadata: NowPlayingMetadata
 ): Promise<void> {
-  if (!Number.isInteger(index) || index !== 0) {
+  if (!Number.isInteger(index) || index < 0) {
     throw new PlayerException(
       PlayerErrorCode.InvalidArgument,
-      'updateMetadataForTrack only supports index 0 until T6'
+      'updateMetadataForTrack requires a non-negative index'
     );
   }
   if (!metadata || typeof metadata !== 'object') {
@@ -166,23 +292,14 @@ export async function updateMetadataForTrack(
       'updateMetadataForTrack requires an object'
     );
   }
-  currentTrackMeta = mergeForcedMetadata(currentTrackMeta ?? {}, metadata);
-  if (persistedOptions.autoUpdateMetadata && !forcedNowPlaying) {
-    try {
-      await ensureNative().updateNowPlayingMetadata({ ...currentTrackMeta });
-    } catch (e) {
-      rethrowNative(e);
+  try {
+    const native = ensureNative();
+    await native.updateMetadataForTrack(index, { ...metadata });
+    if (forcedNowPlaying) {
+      await native.updateNowPlayingMetadata({ ...forcedNowPlaying });
     }
-  } else if (forcedNowPlaying) {
-    // Forced still wins — push merge for native display
-    try {
-      await ensureNative().updateNowPlayingMetadata({
-        ...currentTrackMeta,
-        ...forcedNowPlaying,
-      });
-    } catch (e) {
-      rethrowNative(e);
-    }
+  } catch (e) {
+    rethrowNative(e);
   }
 }
 
@@ -258,9 +375,7 @@ export async function setPlayWhenReady(value: boolean): Promise<void> {
 }
 
 export async function reset(): Promise<void> {
-  currentTrackMeta = null;
   forcedNowPlaying = null;
-  // Options intentionally persist across reset
   try {
     await ensureNative().reset();
   } catch (e) {
@@ -274,6 +389,5 @@ export function __resetPlayerJsStateForTests(): void {
     ...DEFAULT_PLAYER_OPTIONS,
     capabilities: [...DEFAULT_PLAYER_OPTIONS.capabilities],
   };
-  currentTrackMeta = null;
   forcedNowPlaying = null;
 }

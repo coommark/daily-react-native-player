@@ -1,5 +1,5 @@
 /**
- * Contract tests — planned Bible surface + implemented T3/T4/T5 exports.
+ * Contract tests — planned Bible surface + implemented T3–T6 exports.
  */
 
 const PLANNED_PUBLIC_SURFACE = [
@@ -65,12 +65,32 @@ const IMPLEMENTED_T5 = [
   'REMOTE_EVENT_NAMES',
 ];
 
+const IMPLEMENTED_T6 = [
+  'remove',
+  'getQueue',
+  'getActiveTrack',
+  'getActiveTrackIndex',
+  'skip',
+  'skipToNext',
+  'skipToPrevious',
+  'PLAYBACK_EVENT_NAMES',
+  'ALL_EVENT_NAMES',
+];
+
 jest.mock('../DailyReactNativePlayerModule', () => ({
   __esModule: true,
   default: {
     setupPlayer: jest.fn(async () => {}),
     updateOptions: jest.fn(async () => {}),
-    add: jest.fn(async () => {}),
+    add: jest.fn(async () => [0]),
+    remove: jest.fn(async () => {}),
+    getQueue: jest.fn(async () => []),
+    getActiveTrack: jest.fn(async () => null),
+    getActiveTrackIndex: jest.fn(async () => null),
+    skip: jest.fn(async () => {}),
+    skipToNext: jest.fn(async () => {}),
+    skipToPrevious: jest.fn(async () => {}),
+    updateMetadataForTrack: jest.fn(async () => {}),
     updateNowPlayingMetadata: jest.fn(async () => {}),
     play: jest.fn(async () => {}),
     pause: jest.fn(async () => {}),
@@ -128,5 +148,18 @@ describe('daily-react-native-player contract', () => {
     expect(api.HEADLESS_TASK_NAME).toBe('DailyReactNativePlayer');
     expect(api.Event.RemotePlay).toBe('remote-play');
     expect(api.Event.RemoteDuck).toBe('remote-duck');
+  });
+
+  it('exports implemented T6 API', () => {
+    const api = require('../index');
+    for (const name of IMPLEMENTED_T6) {
+      expect(api[name]).toBeDefined();
+    }
+    expect(typeof api.remove).toBe('function');
+    expect(typeof api.getQueue).toBe('function');
+    expect(typeof api.skipToNext).toBe('function');
+    expect(api.Event.PlaybackState).toBe('playback-state');
+    expect(api.Event.PlaybackProgressUpdated).toBe('playback-progress-updated');
+    expect(api.DEFAULT_PLAYER_OPTIONS.progressUpdateEventInterval).toBe(1);
   });
 });

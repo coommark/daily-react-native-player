@@ -6,9 +6,11 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.core.os.bundleOf
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -18,19 +20,39 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import expo.modules.kotlin.exception.CodedException
+import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Process-scoped speech player (ADR: single ExoPlayer owner).
- * MediaSession attaches via [SessionHolder] to [getSessionPlayer].
+ * Queue metadata list is authoritative; ExoPlayer holds the **active** item only (ADR-15).
  */
 object SpeechEngine {
   private const val TAG = "DailyPlayerSpeech"
   private val mainHandler = Handler(Looper.getMainLooper())
   private val artworkExecutor = Executors.newSingleThreadExecutor()
   private val artworkGeneration = AtomicInteger(0)
+
+  data class QueueTrack(
+    val id: String,
+    val url: String,
+    var title: String? = null,
+    var artist: String? = null,
+    var album: String? = null,
+    var artwork: String? = null,
+  ) {
+    fun toMap(): Map<String, Any?> =
+      mapOf(
+        "id" to id,
+        "url" to url,
+        "title" to title,
+        "artist" to artist,
+        "album" to album,
+        "artwork" to artwork,
+      )
+  }
 
   @Volatile
   private var player: ExoPlayer? = null
@@ -66,11 +88,22 @@ object SpeechEngine {
   private var stopForegroundGracePeriodSeconds = 5.0
 
   @Volatile
+  private var progressUpdateEventInterval = 1.0
+
+  @Volatile
   private var capabilities: Set<String> =
     setOf("play", "pause", "stop", "skipToNext", "skipToPrevious")
 
   @Volatile
   private var artworkFuture: Future<*>? = null
+
+  private val queue = mutableListOf<QueueTrack>()
+  private var activeIndex: Int = -1
+  private var queueEpoch: Long = 0
+  private var lastEmittedState: String? = null
+  private var lastPlayWhenReady: Boolean? = null
+  private var progressRunnable: Runnable? = null
+  private var advancingInternally = false
 
   private var audioFocusRequest: AudioFocusRequest? = null
 
@@ -92,7 +125,6 @@ object SpeechEngine {
         }
         AudioManager.AUDIOFOCUS_GAIN -> {
           RemoteEventHub.emitDuck(paused = false, permanent = false)
-          // Resume only when auto-handle is on (Bible uses false).
           if (autoHandleInterruptions && hasSource) {
             try {
               play()
@@ -114,12 +146,17 @@ object SpeechEngine {
 
   fun getPlayer(): ExoPlayer? = player
 
-  /** Player exposed to MediaSession (may advertise no-op next/prev). */
   fun getSessionPlayer(): Player? = sessionPlayer ?: player
 
   fun getKillBehavior(): KillBehavior = killBehavior
 
   fun getStopForegroundGracePeriodSeconds(): Double = stopForegroundGracePeriodSeconds
+
+  fun onProgressObservingChanged(active: Boolean) {
+    runOnMainBlocking {
+      refreshProgressTimerLocked()
+    }
+  }
 
   fun setup(context: Context) {
     runOnMainBlocking {
@@ -135,7 +172,6 @@ object SpeechEngine {
           .build()
       val exo =
         ExoPlayer.Builder(app)
-          // Focus owned by SpeechEngine so we can emit RemoteDuck (T5).
           .setAudioAttributes(audioAttributes, /* handleAudioFocus= */ false)
           .build()
       exo.addListener(
@@ -144,16 +180,42 @@ object SpeechEngine {
             if (playbackState == Player.STATE_READY) {
               flushPendingSeek(exo)
             }
+            if (playbackState == Player.STATE_ENDED && !advancingInternally) {
+              handleTrackEndedLocked()
+            } else {
+              emitStateIfChangedLocked()
+            }
+            refreshProgressTimerLocked()
           }
 
           override fun onPlayerError(error: PlaybackException) {
             lastErrorCode = "playback_failed"
+            val track = activeTrackOrNull()
+            RemoteEventHub.emit(
+              RemoteEventHub.PLAYBACK_ERROR,
+              bundleOf(
+                "code" to "playback_failed",
+                "message" to (error.message ?: "playback_failed"),
+                "trackId" to track?.id,
+                "index" to if (activeIndex >= 0) activeIndex else null,
+              ),
+            )
+            emitStateIfChangedLocked(force = "error")
+            refreshProgressTimerLocked()
           }
 
           override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
               appContext?.let { SessionHolder.onPlaybackStarted(it) }
             }
+            emitStateIfChangedLocked()
+            refreshProgressTimerLocked()
+          }
+
+          override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            emitPlayWhenReadyIfChangedLocked(playWhenReady)
+            emitStateIfChangedLocked()
+            refreshProgressTimerLocked()
           }
         }
       )
@@ -163,6 +225,11 @@ object SpeechEngine {
       hasSource = false
       pendingSeekSeconds = null
       lastErrorCode = null
+      queue.clear()
+      activeIndex = -1
+      queueEpoch = 0
+      lastEmittedState = null
+      lastPlayWhenReady = null
     }
   }
 
@@ -174,6 +241,12 @@ object SpeechEngine {
     (options["autoHandleInterruptions"] as? Boolean)?.let { autoHandleInterruptions = it }
     (options["stopForegroundGracePeriod"] as? Number)?.toDouble()?.let {
       if (it >= 0) stopForegroundGracePeriodSeconds = it
+    }
+    (options["progressUpdateEventInterval"] as? Number)?.toDouble()?.let {
+      if (it >= 0) {
+        progressUpdateEventInterval = it
+        runOnMainBlocking { refreshProgressTimerLocked() }
+      }
     }
     when (options["appKilledPlaybackBehavior"] as? String) {
       "continue-playback" -> killBehavior = KillBehavior.CONTINUE
@@ -215,36 +288,183 @@ object SpeechEngine {
     return builder.build()
   }
 
-  fun add(url: String, metadata: Map<String, Any?>? = null) {
+  /** Batch add — returns inserted indices. */
+  fun addTracks(tracks: List<Map<String, Any?>>, insertBeforeIndex: Int?): List<Int> {
+    ensureInitialized()
+    return runOnMainBlocking {
+      if (tracks.isEmpty()) {
+        throw CodedException("invalid_argument", "add() requires at least one track", null)
+      }
+      val insertAt =
+        when {
+          insertBeforeIndex == null -> queue.size
+          insertBeforeIndex < 0 || insertBeforeIndex > queue.size ->
+            throw CodedException("invalid_argument", "insertBeforeIndex out of range", null)
+          else -> insertBeforeIndex
+        }
+      val wasEmpty = queue.isEmpty()
+      val entries =
+        tracks.map { raw ->
+          val url = raw["url"] as? String
+          if (url.isNullOrBlank()) {
+            throw CodedException("invalid_argument", "Track url must not be empty", null)
+          }
+          val id =
+            (raw["id"] as? String)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+          QueueTrack(
+            id = id,
+            url = url,
+            title = raw["title"] as? String,
+            artist = raw["artist"] as? String,
+            album = raw["album"] as? String,
+            artwork = raw["artwork"] as? String,
+          )
+        }
+      queueEpoch++
+      lastErrorCode = null
+      queue.addAll(insertAt, entries)
+      if (activeIndex >= insertAt && !wasEmpty) {
+        activeIndex += entries.size
+      }
+      val indices = (insertAt until insertAt + entries.size).toList()
+      if (wasEmpty) {
+        activateIndexLocked(0, emitActive = true)
+      } else if (activeIndex >= insertAt && activeIndex < insertAt + entries.size) {
+        // inserted before/at active — index already adjusted
+      }
+      indices
+    }
+  }
+
+  fun remove(indexes: List<Int>) {
     ensureInitialized()
     runOnMainBlocking {
-      val exo = requirePlayer()
-      lastErrorCode = null
-      try {
-        val uri = Uri.parse(url)
-        val metaBuilder = MediaMetadata.Builder()
-        if (autoUpdateMetadata && metadata != null) {
-          (metadata["title"] as? String)?.let { metaBuilder.setTitle(it) }
-          (metadata["artist"] as? String)?.let { metaBuilder.setArtist(it) }
-          (metadata["album"] as? String)?.let { metaBuilder.setAlbumTitle(it) }
-          (metadata["artwork"] as? String)?.let { metaBuilder.setArtworkUri(Uri.parse(it)) }
+      if (indexes.isEmpty()) {
+        return@runOnMainBlocking
+      }
+      val unique = indexes.toSet()
+      for (i in unique) {
+        if (i < 0 || i >= queue.size) {
+          throw CodedException("invalid_argument", "remove index out of range", null)
         }
-        val item =
-          MediaItem.Builder()
-            .setUri(uri)
-            .setMediaMetadata(metaBuilder.build())
-            .build()
-        exo.setMediaItem(item)
-        exo.prepare()
-        hasSource = true
-        val artworkUrl = metadata?.get("artwork") as? String
-        if (autoUpdateMetadata && !artworkUrl.isNullOrBlank()) {
-          loadArtworkAsync(artworkUrl)
+      }
+      val sorted = unique.sortedDescending()
+      val removingActive = activeIndex in unique
+      val last = activeTrackOrNull()
+      val lastIdx = if (activeIndex >= 0) activeIndex else null
+      queueEpoch++
+      for (i in sorted) {
+        queue.removeAt(i)
+        if (i < activeIndex) {
+          activeIndex--
+        } else if (i == activeIndex) {
+          activeIndex = -1
         }
-      } catch (e: Exception) {
-        hasSource = false
-        lastErrorCode = "load_failed"
-        throw CodedException("load_failed", e.message ?: "Failed to load media", e)
+      }
+      if (queue.isEmpty()) {
+        clearPlayerLocked()
+        emitActiveTrackChangedLocked(null, null, lastIdx, last)
+        emitStateIfChangedLocked(force = "none")
+        refreshProgressTimerLocked()
+        return@runOnMainBlocking
+      }
+      if (removingActive) {
+        val next =
+          when {
+            activeIndex >= 0 && activeIndex < queue.size -> activeIndex
+            lastIdx != null && lastIdx < queue.size -> lastIdx
+            lastIdx != null && lastIdx - 1 >= 0 -> lastIdx - 1
+            else -> 0
+          }
+        activateIndexLocked(next, emitActive = true, lastIndex = lastIdx, lastTrack = last)
+      } else if (activeIndex >= 0) {
+        emitActiveTrackChangedLocked(activeIndex, activeTrackOrNull(), lastIdx, last)
+      }
+    }
+  }
+
+  fun getQueue(): List<Map<String, Any?>> {
+    if (!initialized) {
+      return emptyList()
+    }
+    return runOnMainBlocking { queue.map { it.toMap() } }
+  }
+
+  fun getActiveTrack(): Map<String, Any?>? {
+    if (!initialized) {
+      return null
+    }
+    return runOnMainBlocking { activeTrackOrNull()?.toMap() }
+  }
+
+  fun getActiveTrackIndex(): Int? {
+    if (!initialized) {
+      return null
+    }
+    return runOnMainBlocking {
+      if (activeIndex in queue.indices) activeIndex else null
+    }
+  }
+
+  fun skip(index: Int) {
+    ensureInitialized()
+    runOnMainBlocking {
+      if (index < 0 || index >= queue.size) {
+        throw CodedException("invalid_argument", "skip index out of range", null)
+      }
+      if (index == activeIndex) {
+        val exo = requirePlayer()
+        exo.seekTo(0)
+        return@runOnMainBlocking
+      }
+      val last = activeTrackOrNull()
+      val lastIdx = if (activeIndex >= 0) activeIndex else null
+      queueEpoch++
+      activateIndexLocked(index, emitActive = true, lastIndex = lastIdx, lastTrack = last)
+    }
+  }
+
+  fun skipToNext() {
+    ensureInitialized()
+    runOnMainBlocking {
+      if (queue.isEmpty()) {
+        throw CodedException("no_source", "No media source loaded", null)
+      }
+      if (activeIndex < 0 || activeIndex >= queue.size - 1) {
+        return@runOnMainBlocking
+      }
+      skip(activeIndex + 1)
+    }
+  }
+
+  fun skipToPrevious() {
+    ensureInitialized()
+    runOnMainBlocking {
+      if (queue.isEmpty()) {
+        throw CodedException("no_source", "No media source loaded", null)
+      }
+      if (activeIndex <= 0) {
+        return@runOnMainBlocking
+      }
+      skip(activeIndex - 1)
+    }
+  }
+
+  fun updateMetadataForTrack(index: Int, metadata: Map<String, Any?>) {
+    ensureInitialized()
+    runOnMainBlocking {
+      if (index < 0 || index >= queue.size) {
+        throw CodedException("invalid_argument", "updateMetadataForTrack index out of range", null)
+      }
+      val track = queue[index]
+      (metadata["title"] as? String)?.let { track.title = it }
+      (metadata["artist"] as? String)?.let { track.artist = it }
+      (metadata["album"] as? String)?.let { track.album = it }
+      if (metadata.containsKey("artwork")) {
+        track.artwork = metadata["artwork"] as? String
+      }
+      if (index == activeIndex && autoUpdateMetadata) {
+        applyTrackToPlayerLocked(track, preservePosition = true)
       }
     }
   }
@@ -268,7 +488,7 @@ object SpeechEngine {
           metaBuilder.setArtworkData(null, null)
         } else {
           metaBuilder.setArtworkUri(Uri.parse(artwork))
-          loadArtworkAsync(artwork)
+          loadArtworkAsync(artwork, activeTrackOrNull()?.id)
         }
       }
       val updated =
@@ -277,9 +497,15 @@ object SpeechEngine {
           .build()
       val position = exo.currentPosition
       val playWhenReady = exo.playWhenReady
+      val epoch = queueEpoch
+      val trackId = activeTrackOrNull()?.id
       exo.setMediaItem(updated, position)
       exo.prepare()
       exo.playWhenReady = playWhenReady
+      // artwork load stamped separately
+      if (epoch != queueEpoch || trackId != activeTrackOrNull()?.id) {
+        return@runOnMainBlocking
+      }
     }
   }
 
@@ -298,7 +524,10 @@ object SpeechEngine {
       }
       exo.playWhenReady = true
       exo.play()
+      emitPlayWhenReadyIfChangedLocked(true)
       appContext?.let { SessionHolder.onPlaybackStarted(it) }
+      emitStateIfChangedLocked()
+      refreshProgressTimerLocked()
     }
   }
 
@@ -311,7 +540,10 @@ object SpeechEngine {
         it.playWhenReady = false
         it.pause()
       }
+      emitPlayWhenReadyIfChangedLocked(false)
       abandonAudioFocus()
+      emitStateIfChangedLocked()
+      refreshProgressTimerLocked()
     }
   }
 
@@ -364,28 +596,7 @@ object SpeechEngine {
     if (!initialized) {
       return "none"
     }
-    return runOnMainBlocking {
-      val exo = player ?: return@runOnMainBlocking "none"
-      if (exo.playerError != null || lastErrorCode != null) {
-        return@runOnMainBlocking "error"
-      }
-      if (!hasSource) {
-        return@runOnMainBlocking "none"
-      }
-      when (exo.playbackState) {
-        Player.STATE_IDLE -> "none"
-        Player.STATE_BUFFERING -> "loading"
-        Player.STATE_ENDED -> "ended"
-        Player.STATE_READY -> {
-          when {
-            exo.isPlaying || exo.playWhenReady -> "playing"
-            exo.currentPosition > 0 -> "paused"
-            else -> "ready"
-          }
-        }
-        else -> "none"
-      }
-    }
+    return runOnMainBlocking { computeStateLocked() }
   }
 
   fun getPlayWhenReady(): Boolean {
@@ -402,9 +613,12 @@ object SpeechEngine {
         throw CodedException("no_source", "No media source loaded", null)
       }
       requirePlayer().playWhenReady = value
+      emitPlayWhenReadyIfChangedLocked(value)
       if (value) {
         appContext?.let { SessionHolder.onPlaybackStarted(it) }
       }
+      emitStateIfChangedLocked()
+      refreshProgressTimerLocked()
     }
   }
 
@@ -414,19 +628,19 @@ object SpeechEngine {
     }
     cancelArtworkLoad()
     runOnMainBlocking {
-      val exo = player ?: return@runOnMainBlocking
-      exo.stop()
-      exo.clearMediaItems()
-      hasSource = false
-      pendingSeekSeconds = null
-      lastErrorCode = null
-      exo.playWhenReady = false
+      stopProgressTimerLocked()
+      val last = activeTrackOrNull()
+      val lastIdx = if (activeIndex >= 0) activeIndex else null
+      queueEpoch++
+      queue.clear()
+      activeIndex = -1
+      clearPlayerLocked()
+      emitActiveTrackChangedLocked(null, null, lastIdx, last)
+      emitPlayWhenReadyIfChangedLocked(false)
+      emitStateIfChangedLocked(force = "none")
     }
   }
 
-  /**
-   * Release when kill policy allows. ContinuePlayback + active FGS keeps engine alive.
-   */
   fun releaseIfAllowed() {
     if (
       killBehavior == KillBehavior.CONTINUE &&
@@ -438,10 +652,10 @@ object SpeechEngine {
     release()
   }
 
-  /** Release decoders — full teardown. */
   fun release() {
     cancelArtworkLoad()
     runOnMainBlocking {
+      stopProgressTimerLocked()
       abandonAudioFocus()
       SessionHolder.releaseSession()
       sessionPlayer = null
@@ -451,11 +665,241 @@ object SpeechEngine {
       hasSource = false
       pendingSeekSeconds = null
       lastErrorCode = null
+      queue.clear()
+      activeIndex = -1
     }
   }
 
-  private fun loadArtworkAsync(artworkUrl: String) {
+  private fun activateIndexLocked(
+    index: Int,
+    emitActive: Boolean,
+    lastIndex: Int? = if (activeIndex >= 0) activeIndex else null,
+    lastTrack: QueueTrack? = activeTrackOrNull(),
+  ) {
+    val track = queue.getOrNull(index) ?: return
+    activeIndex = index
+    lastErrorCode = null
+    applyTrackToPlayerLocked(track, preservePosition = false)
+    hasSource = true
+    if (emitActive) {
+      emitActiveTrackChangedLocked(index, track, lastIndex, lastTrack)
+    }
+    emitStateIfChangedLocked()
+    refreshProgressTimerLocked()
+  }
+
+  private fun applyTrackToPlayerLocked(track: QueueTrack, preservePosition: Boolean) {
+    val exo = requirePlayer()
+    val metaBuilder = MediaMetadata.Builder()
+    if (autoUpdateMetadata) {
+      track.title?.let { metaBuilder.setTitle(it) }
+      track.artist?.let { metaBuilder.setArtist(it) }
+      track.album?.let { metaBuilder.setAlbumTitle(it) }
+      track.artwork?.let { metaBuilder.setArtworkUri(Uri.parse(it)) }
+    }
+    val item =
+      MediaItem.Builder()
+        .setMediaId(track.id)
+        .setUri(Uri.parse(track.url))
+        .setMediaMetadata(metaBuilder.build())
+        .build()
+    val position = if (preservePosition) exo.currentPosition else 0L
+    val pwr = exo.playWhenReady
+    advancingInternally = true
+    try {
+      exo.setMediaItem(item, position)
+      exo.prepare()
+      exo.playWhenReady = pwr
+    } finally {
+      advancingInternally = false
+    }
+    if (autoUpdateMetadata && !track.artwork.isNullOrBlank()) {
+      loadArtworkAsync(track.artwork!!, track.id)
+    }
+  }
+
+  private fun handleTrackEndedLocked() {
+    if (queue.isEmpty() || activeIndex < 0) {
+      emitStateIfChangedLocked(force = "ended")
+      return
+    }
+    if (activeIndex < queue.size - 1) {
+      val last = activeTrackOrNull()
+      val lastIdx = activeIndex
+      val pwr = player?.playWhenReady ?: false
+      queueEpoch++
+      activateIndexLocked(activeIndex + 1, emitActive = true, lastIndex = lastIdx, lastTrack = last)
+      player?.playWhenReady = pwr
+      if (pwr) {
+        player?.play()
+      }
+      return
+    }
+    // Last track
+    val track = activeTrackOrNull()
+    val idx = activeIndex
+    val position = msToSeconds(player?.currentPosition ?: 0L)
+    player?.playWhenReady = false
+    emitPlayWhenReadyIfChangedLocked(false)
+    emitStateIfChangedLocked(force = "ended")
+    val body = Bundle()
+    body.putDouble("position", position)
+    if (idx >= 0) body.putInt("index", idx)
+    if (track != null) {
+      body.putBundle("track", trackToBundle(track))
+    } else {
+      body.putString("track", null)
+    }
+    RemoteEventHub.emit(RemoteEventHub.PLAYBACK_QUEUE_ENDED, body)
+    refreshProgressTimerLocked()
+  }
+
+  private fun trackToBundle(track: QueueTrack): Bundle =
+    bundleOf(
+      "id" to track.id,
+      "url" to track.url,
+      "title" to track.title,
+      "artist" to track.artist,
+      "album" to track.album,
+      "artwork" to track.artwork,
+    )
+
+  private fun clearPlayerLocked() {
+    val exo = player ?: return
+    exo.stop()
+    exo.clearMediaItems()
+    hasSource = false
+    pendingSeekSeconds = null
+    lastErrorCode = null
+    exo.playWhenReady = false
+  }
+
+  private fun activeTrackOrNull(): QueueTrack? =
+    if (activeIndex in queue.indices) queue[activeIndex] else null
+
+  private fun emitActiveTrackChangedLocked(
+    index: Int?,
+    track: QueueTrack?,
+    lastIndex: Int?,
+    lastTrack: QueueTrack?,
+  ) {
+    val body = Bundle()
+    if (index != null) body.putInt("index", index) else body.putString("index", null)
+    if (lastIndex != null) body.putInt("lastIndex", lastIndex) else body.putString("lastIndex", null)
+    if (track != null) {
+      body.putBundle("track", trackToBundle(track))
+    } else {
+      body.putString("track", null)
+    }
+    if (lastTrack != null) {
+      body.putBundle("lastTrack", trackToBundle(lastTrack))
+    } else {
+      body.putString("lastTrack", null)
+    }
+    RemoteEventHub.emit(RemoteEventHub.PLAYBACK_ACTIVE_TRACK_CHANGED, body)
+  }
+
+  private fun computeStateLocked(): String {
+    val exo = player ?: return "none"
+    if (exo.playerError != null || lastErrorCode != null) {
+      return "error"
+    }
+    if (!hasSource || queue.isEmpty()) {
+      return "none"
+    }
+    return when (exo.playbackState) {
+      Player.STATE_IDLE -> "none"
+      Player.STATE_BUFFERING -> "loading"
+      Player.STATE_ENDED -> "ended"
+      Player.STATE_READY -> {
+        when {
+          exo.isPlaying -> "playing"
+          exo.playWhenReady -> "playing"
+          exo.currentPosition > 0 -> "paused"
+          else -> "ready"
+        }
+      }
+      else -> "none"
+    }
+  }
+
+  private fun emitStateIfChangedLocked(force: String? = null) {
+    val state = force ?: computeStateLocked()
+    if (state == lastEmittedState) {
+      return
+    }
+    lastEmittedState = state
+    RemoteEventHub.emit(RemoteEventHub.PLAYBACK_STATE, bundleOf("state" to state))
+  }
+
+  private fun emitPlayWhenReadyIfChangedLocked(value: Boolean) {
+    if (lastPlayWhenReady == value) {
+      return
+    }
+    lastPlayWhenReady = value
+    RemoteEventHub.emit(
+      RemoteEventHub.PLAYBACK_PLAY_WHEN_READY_CHANGED,
+      bundleOf("playWhenReady" to value),
+    )
+  }
+
+  private fun refreshProgressTimerLocked() {
+    stopProgressTimerLocked()
+    val interval = progressUpdateEventInterval
+    if (interval <= 0 || !RemoteEventHub.isProgressObserving()) {
+      return
+    }
+    if (computeStateLocked() != "playing") {
+      return
+    }
+    val epoch = queueEpoch
+    val delayMs = (interval * 1000.0).toLong().coerceAtLeast(100L)
+    val runnable =
+      object : Runnable {
+        override fun run() {
+          if (epoch != queueEpoch) {
+            return
+          }
+          if (!RemoteEventHub.isProgressObserving() || progressUpdateEventInterval <= 0) {
+            return
+          }
+          if (computeStateLocked() != "playing") {
+            return
+          }
+          val progress = getProgressUnlocked()
+          RemoteEventHub.emit(
+            RemoteEventHub.PLAYBACK_PROGRESS_UPDATED,
+            bundleOf(
+              "position" to progress["position"],
+              "duration" to progress["duration"],
+              "buffered" to progress["buffered"],
+            ),
+          )
+          progressRunnable = this
+          mainHandler.postDelayed(this, delayMs)
+        }
+      }
+    progressRunnable = runnable
+    mainHandler.postDelayed(runnable, delayMs)
+  }
+
+  private fun getProgressUnlocked(): Map<String, Double> {
+    val exo = player ?: return mapOf("position" to 0.0, "duration" to 0.0, "buffered" to 0.0)
+    return mapOf(
+      "position" to msToSeconds(exo.currentPosition),
+      "duration" to if (exo.duration > 0) msToSeconds(exo.duration) else 0.0,
+      "buffered" to msToSeconds(exo.bufferedPosition),
+    )
+  }
+
+  private fun stopProgressTimerLocked() {
+    progressRunnable?.let { mainHandler.removeCallbacks(it) }
+    progressRunnable = null
+  }
+
+  private fun loadArtworkAsync(artworkUrl: String, trackId: String?) {
     val gen = artworkGeneration.incrementAndGet()
+    val epoch = queueEpoch
     artworkFuture?.cancel(true)
     artworkFuture =
       artworkExecutor.submit {
@@ -466,6 +910,12 @@ object SpeechEngine {
           }
           mainHandler.post {
             if (gen != artworkGeneration.get() || player == null || !hasSource) {
+              return@post
+            }
+            if (epoch != queueEpoch) {
+              return@post
+            }
+            if (trackId != null && activeTrackOrNull()?.id != trackId) {
               return@post
             }
             val exo = player ?: return@post
@@ -590,10 +1040,6 @@ object SpeechEngine {
     return result as T
   }
 
-  /**
-   * Session-facing player: remotes emit to JS (T5); seek stays native.
-   * Internal [SpeechEngine.play]/[pause] use raw [ExoPlayer] — never this wrapper.
-   */
   private class CapabilityForwardingPlayer(private val exo: ExoPlayer) : ForwardingPlayer(exo) {
     override fun isCommandAvailable(command: Int): Boolean {
       return when (command) {

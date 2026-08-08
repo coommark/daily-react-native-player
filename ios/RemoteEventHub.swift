@@ -1,8 +1,9 @@
 import Foundation
 
 /**
- * Process-scoped bridge from NowPlaying remotes to the Expo module `sendEvent`.
+ * Process-scoped bridge from engine / NowPlaying remotes to the Expo module `sendEvent`.
  * Does not tear down when JS listeners detach — remotes outlive UI.
+ * Progress observing is gated via `setProgressObserving`.
  */
 enum RemoteEventName: String {
   case remotePlay = "remote-play"
@@ -13,6 +14,13 @@ enum RemoteEventName: String {
   case remotePrevious = "remote-previous"
   case remoteDuck = "remote-duck"
 
+  case playbackActiveTrackChanged = "playback-active-track-changed"
+  case playbackState = "playback-state"
+  case playbackQueueEnded = "playback-queue-ended"
+  case playbackError = "playback-error"
+  case playbackProgressUpdated = "playback-progress-updated"
+  case playbackPlayWhenReadyChanged = "playback-play-when-ready-changed"
+
   static let allWireNames: [String] = [
     RemoteEventName.remotePlay.rawValue,
     RemoteEventName.remotePause.rawValue,
@@ -21,6 +29,12 @@ enum RemoteEventName: String {
     RemoteEventName.remoteNext.rawValue,
     RemoteEventName.remotePrevious.rawValue,
     RemoteEventName.remoteDuck.rawValue,
+    RemoteEventName.playbackActiveTrackChanged.rawValue,
+    RemoteEventName.playbackState.rawValue,
+    RemoteEventName.playbackQueueEnded.rawValue,
+    RemoteEventName.playbackError.rawValue,
+    RemoteEventName.playbackProgressUpdated.rawValue,
+    RemoteEventName.playbackPlayWhenReadyChanged.rawValue,
   ]
 }
 
@@ -29,6 +43,7 @@ final class RemoteEventHub {
 
   private let lock = NSLock()
   private var emitter: ((String, [String: Any]?) -> Void)?
+  private var progressObserving = false
 
   private init() {}
 
@@ -36,6 +51,19 @@ final class RemoteEventHub {
     lock.lock()
     defer { lock.unlock() }
     emitter = emit
+  }
+
+  func setProgressObserving(_ active: Bool) {
+    lock.lock()
+    progressObserving = active
+    lock.unlock()
+    SpeechEngine.shared.onProgressObservingChanged(active)
+  }
+
+  func isProgressObserving() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return progressObserving
   }
 
   func emit(_ name: RemoteEventName, body: [String: Any]? = nil) {

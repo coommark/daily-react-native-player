@@ -1,9 +1,24 @@
-# Background playback (P0)
+# Background playback & system remotes (P0)
 
 Non-negotiable for v0.1 / Bible-ready release — required by
 **[Daily Bible - Offline & Audio](https://dailybiblenow.com)**
 ([Google Play](https://play.google.com/store/apps/details?id=com.coommark.dailybible) ·
 [App Store](https://apps.apple.com/us/app/daily-bible-offline-audio/id6754987448)).
+
+## What this gives your users
+
+Control audio **without opening the app**:
+
+| Surface | Controls |
+| --- | --- |
+| **Lock screen** | Play, pause, stop, next, previous + artwork / title / artist / album |
+| **Media notification** (Android) | Same while the phone is locked or in a pocket |
+| **Control Center / Dynamic Island** (iOS) | System transport + Now Playing |
+| **Bluetooth & wired headsets** | Play/pause, next/previous from buds, car decks, and other MediaSession / MPRemote clients |
+| **Screen off / background** | Playback continues (Android FGS `mediaPlayback`, iOS `UIBackgroundModes: audio`) |
+| **App removed from recents** | Configurable — Bible uses **ContinuePlayback** |
+
+Hardware and system UI do **not** call native transport blindly. They emit **Remote\*** events to your JS `registerPlaybackService` so **product policy** owns Next/Previous (e.g. next verse). That is the T4 session + T5 remote bridge.
 
 ## Must work on device
 
@@ -12,7 +27,7 @@ Non-negotiable for v0.1 / Bible-ready release — required by
 - iOS `UIBackgroundModes: audio`
 - Lock-screen and notification controls: play, pause, stop, next, previous
 - Now-playing artifacts: title, artist, album, artwork, duration / position, app / session activity
-- Remotes delivered to JS via `registerPlaybackService` (**T5**)
+- Remotes delivered to JS via `registerPlaybackService` (**T5**) — including headset / Bluetooth command paths that go through MediaSession / MPRemoteCommandCenter
 - `updateOptions` re-applied after `reset()` so remotes / notification config stay alive
 
 ## Config plugin (T2 — done)

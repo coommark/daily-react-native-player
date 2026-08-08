@@ -13,13 +13,19 @@ public class DailyReactNativePlayerModule: Module {
     }
 
     OnDestroy {
-      // Mirror Android: keep emitter when ContinuePlayback would skip engine release.
-      // iOS has no FGS flag; keep hub unless we are about to release the engine.
       let keepAlive = SpeechEngine.shared.shouldKeepAliveOnModuleDestroy()
       if !keepAlive {
         RemoteEventHub.shared.setEmitter(nil)
       }
       SpeechEngine.shared.releaseIfAllowed()
+    }
+
+    OnStartObserving("playback-progress-updated") {
+      RemoteEventHub.shared.setProgressObserving(true)
+    }
+
+    OnStopObserving("playback-progress-updated") {
+      RemoteEventHub.shared.setProgressObserving(false)
     }
 
     AsyncFunction("setupPlayer") { (options: [String: Any]?) in
@@ -34,12 +40,40 @@ public class DailyReactNativePlayerModule: Module {
       NowPlayingController.shared.applyOptions(options)
     }.runOnQueue(.main)
 
-    AsyncFunction("add") { (track: [String: Any]) in
-      guard let url = track["url"] as? String,
-            !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        throw Exception(name: "invalid_argument", description: "Track url must not be empty", code: "invalid_argument")
-      }
-      try SpeechEngine.shared.add(urlString: url, metadata: track)
+    AsyncFunction("add") { (tracks: [[String: Any]], insertBeforeIndex: Int?) -> [Int] in
+      return try SpeechEngine.shared.addTracks(tracks, insertBeforeIndex: insertBeforeIndex)
+    }.runOnQueue(.main)
+
+    AsyncFunction("remove") { (indexes: [Int]) in
+      try SpeechEngine.shared.remove(indexes: indexes)
+    }.runOnQueue(.main)
+
+    AsyncFunction("getQueue") { () -> [[String: Any?]] in
+      return SpeechEngine.shared.getQueue()
+    }.runOnQueue(.main)
+
+    AsyncFunction("getActiveTrack") { () -> [String: Any?]? in
+      return SpeechEngine.shared.getActiveTrack()
+    }.runOnQueue(.main)
+
+    AsyncFunction("getActiveTrackIndex") { () -> Int? in
+      return SpeechEngine.shared.getActiveTrackIndex()
+    }.runOnQueue(.main)
+
+    AsyncFunction("skip") { (index: Int) in
+      try SpeechEngine.shared.skip(index: index)
+    }.runOnQueue(.main)
+
+    AsyncFunction("skipToNext") {
+      try SpeechEngine.shared.skipToNext()
+    }.runOnQueue(.main)
+
+    AsyncFunction("skipToPrevious") {
+      try SpeechEngine.shared.skipToPrevious()
+    }.runOnQueue(.main)
+
+    AsyncFunction("updateMetadataForTrack") { (index: Int, metadata: [String: Any]) in
+      try SpeechEngine.shared.updateMetadataForTrack(index: index, metadata: metadata)
     }.runOnQueue(.main)
 
     AsyncFunction("updateNowPlayingMetadata") { (metadata: [String: Any]) in

@@ -12,6 +12,8 @@ Tickets prioritize what that app needs before optional community extras.
 - **Core MVP:** P0 + P1 green in the example app
 - **0.1.0 / Bible-ready:** Core MVP **plus** T10 ambient (Daily Bible uses ambient today)
 
+P0 background / lock-screen / Bluetooth remotes: [`docs/background-playback.md`](./docs/background-playback.md).  
+Playlist / queue product guide: [`docs/queue.md`](./docs/queue.md).  
 Acceptance surface: [`docs/bible-acceptance.md`](./docs/bible-acceptance.md).
 
 **Peer floor:** Expo SDK **57+** / React Native **0.86+** (New Architecture only). See ADR 10 in [`docs/architecture.md`](./docs/architecture.md).
@@ -26,7 +28,7 @@ Acceptance surface: [`docs/bible-acceptance.md`](./docs/bible-acceptance.md).
 | T3 | — | Progressive formats (WAV, mp3/m4a, platform codecs) + play / pause / seek | done |
 | T4 | P0 | MediaSession + Now Playing + remotes + metadata + ContinuePlayback | code complete — **device QA required** before done |
 | T5 | P0 | `registerPlaybackService` + remote → JS bridge | done — **device QA** for remotes→JS recommended with T4 matrix |
-| T6 | P1 | Queue API + events (Bible matrix) | pending |
+| T6 | P1 | Queue API + events (Bible matrix) — **speech playlist** | done |
 | T7 | P1 | Native silence tracks | pending |
 | T8 | P1 | Progressive queue mutation + `setRate` + reset → reapply options | pending |
 | T9 | P1 | HLS + seek-after-ready | pending |

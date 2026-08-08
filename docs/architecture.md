@@ -34,12 +34,46 @@ example app → JS Player / Silence / Ambient(opt) → Expo Module
 | 9 | Progressive WAV/mp3/m4a (+ platform codecs) from T3; HLS streaming only (no DASH/SS) in v0.1 |
 | 10 | Support policy: **tested** Expo 57.x / RN 0.86.2 / React 19.2.3 / Node ≥22.13; **floor** `expo >=57` / `react-native >=0.86` / New Arch only; newer SDKs best-effort; Expo 53–56 unsupported. `expo` is a **required** peer (not optional) because Expo Modules Core is mandatory. |
 | 11 | Playback rate limits are app policy; player supports general `setRate` |
+| 12 | Native queue is the sole source of truth (JS is a thin facade) |
+| 13 | Stable `Track.id` / Exo `mediaId` / iOS association key |
+| 14 | Serialized mutation lane + `queueEpoch` (stale callbacks discarded) |
+| 15 | MediaSession / Now Playing expose **single current item** (remotes stay emit-only) |
+| 16 | Prepare window (active ± 1–2) for chapter-scale queues |
+| 17 | Event observer policy: Remote* + lifecycle Playback* always-on; progress via `OnStartObserving` / `OnStopObserving` |
+
+### ADR-12 — Native queue sole truth (T6)
+
+Queue order, active index, and per-track metadata live only in `SpeechEngine`. JS validates URLs/types and forwards mutations. `forcedNowPlaying` is a display overlay, not a queue row.
+
+### ADR-13 — Stable track identity (T6)
+
+Assign `id` on enqueue if omitted. Android `MediaItem.mediaId` and iOS side-table use the same id. Events carry track identity; indices are snapshots.
+
+### ADR-14 — Mutation lane + queueEpoch (T6)
+
+All `add` / `remove` / `skip*` / `reset` / metadata-for-track run on the serial main/player path. Bump `queueEpoch` on structural change and `reset`; discard stale artwork/timer/end callbacks.
+
+### ADR-15 — MediaSession single-item honesty (T6)
+
+Expose at most the current playable item to MediaSession / Now Playing. ForwardingPlayer / MPRemote next-prev stay emit-only so Controllers cannot native-skip behind JS policy.
+
+### ADR-16 — Prepare window (T6)
+
+Full metadata list natively; materialize/prepare only active ± 1–2 items. Batch add is O(n) list append without n decoder warmups.
+
+### ADR-17 — Event observer policy (T6)
+
+| Class | Events | Policy |
+| --- | --- | --- |
+| Remotes | Remote* | Always emit; never tear down on last UI detach |
+| Lifecycle | State, ActiveTrackChanged, QueueEnded, Error, PlayWhenReadyChanged | Always emit while engine alive |
+| Hot path | PlaybackProgressUpdated | Start/stop timer via `OnStartObserving` / `OnStopObserving` for that wire name; also respect `progressUpdateEventInterval === 0` |
 
 ## Layers
 
 - **JS:** imperative Player API (named exports), silence helpers (T7), optional ambient facade (T10)
 - **Config plugin (T2):** plugin-owned iOS `UIBackgroundModes: audio` + Android FGS permissions + `PlaybackService` declaration in the *app* manifest (`createRunOncePlugin`, `enableBackgroundPlayback` escape hatch). Library AAR owns the Kotlin `PlaybackService` class and pinned Media3 deps; library manifest stays free of FGS/service.
-- **Native (T3 + T4):** process-scoped `SpeechEngine` owns the speech player (Android ExoPlayer Media3 **1.8.0**, iOS AVPlayer). Mutations are serialized (Android player looper / main; iOS main via AsyncFunction). `reset()` clears source + now-playing display only. Dual players are forbidden. T4 attaches a unique-id `MediaSession` (Android) and `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` (iOS) to that same player.
+- **Native (T3 + T4 + T6):** process-scoped `SpeechEngine` owns the speech player (Android ExoPlayer Media3 **1.8.0**, iOS AVPlayer). Queue metadata list is authoritative; player holds the active item (prepare window). Mutations are serialized (Android player looper / main; iOS main via AsyncFunction). `reset()` clears the full queue + now-playing display only. Dual players are forbidden. T4 attaches a unique-id `MediaSession` (Android) and `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` (iOS) to that same player.
 - **Audio policy (T3):** Android `USAGE_MEDIA` + `CONTENT_TYPE_SPEECH`; iOS `AVAudioSession` category `.playback`, mode `.spokenAudio`, Bluetooth/AirPlay options. Mix modes = T10. Android audio focus owned by `SpeechEngine` (emit `remote-duck`); JS remote events = T5.
 
 ## T4 ownership (binding)

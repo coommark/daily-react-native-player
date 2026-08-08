@@ -2,6 +2,13 @@ export {
   setupPlayer,
   updateOptions,
   add,
+  remove,
+  getQueue,
+  getActiveTrack,
+  getActiveTrackIndex,
+  skip,
+  skipToNext,
+  skipToPrevious,
   updateNowPlayingMetadata,
   updateMetadataForTrack,
   play,
@@ -26,8 +33,23 @@ export type { NowPlayingMetadata } from './Metadata';
 export { PlayerErrorCode, PlayerException, isPlayerException } from './errors';
 export type { PlayerError, PlayerErrorCodeValue } from './errors';
 
-export { Event, HEADLESS_TASK_NAME, REMOTE_EVENT_NAMES } from './Event';
-export type { EventType, RemoteDuckEvent } from './Event';
+export {
+  Event,
+  HEADLESS_TASK_NAME,
+  REMOTE_EVENT_NAMES,
+  PLAYBACK_EVENT_NAMES,
+  ALL_EVENT_NAMES,
+} from './Event';
+export type {
+  EventType,
+  RemoteDuckEvent,
+  PlaybackActiveTrackChangedEvent,
+  PlaybackStateEvent,
+  PlaybackQueueEndedEvent,
+  PlaybackErrorEvent,
+  PlaybackProgressUpdatedEvent,
+  PlaybackPlayWhenReadyChangedEvent,
+} from './Event';
 export { addEventListener, registerPlaybackService } from './registerPlaybackService';
 export type {
   EventSubscription,

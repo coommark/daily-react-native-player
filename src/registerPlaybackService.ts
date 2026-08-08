@@ -1,7 +1,18 @@
 import { AppRegistry, Platform } from 'react-native';
 
 import NativeModule from './DailyReactNativePlayerModule';
-import { Event, HEADLESS_TASK_NAME, type EventType, type RemoteDuckEvent } from './Event';
+import {
+  Event,
+  HEADLESS_TASK_NAME,
+  type EventType,
+  type PlaybackActiveTrackChangedEvent,
+  type PlaybackErrorEvent,
+  type PlaybackPlayWhenReadyChangedEvent,
+  type PlaybackProgressUpdatedEvent,
+  type PlaybackQueueEndedEvent,
+  type PlaybackStateEvent,
+  type RemoteDuckEvent,
+} from './Event';
 
 /** Async/sync body installed by the host (subscribes to remotes). */
 export type ServiceHandler = () => void | Promise<void>;
@@ -15,28 +26,61 @@ export type EventSubscription = {
 
 type EmptyRemoteListener = () => void;
 type DuckRemoteListener = (event: RemoteDuckEvent) => void;
+type ActiveTrackListener = (event: PlaybackActiveTrackChangedEvent) => void;
+type StateListener = (event: PlaybackStateEvent) => void;
+type QueueEndedListener = (event: PlaybackQueueEndedEvent) => void;
+type ErrorListener = (event: PlaybackErrorEvent) => void;
+type ProgressListener = (event: PlaybackProgressUpdatedEvent) => void;
+type PlayWhenReadyListener = (event: PlaybackPlayWhenReadyChangedEvent) => void;
 
 let registered = false;
 
-/**
- * Subscribe to a native remote / policy event.
- * Prefer calling from `registerPlaybackService` so Android headless keeps JS alive.
- */
 export function addEventListener(
   event: typeof Event.RemoteDuck,
   listener: DuckRemoteListener
 ): EventSubscription;
 export function addEventListener(
-  event: Exclude<EventType, typeof Event.RemoteDuck>,
+  event: typeof Event.PlaybackActiveTrackChanged,
+  listener: ActiveTrackListener
+): EventSubscription;
+export function addEventListener(
+  event: typeof Event.PlaybackState,
+  listener: StateListener
+): EventSubscription;
+export function addEventListener(
+  event: typeof Event.PlaybackQueueEnded,
+  listener: QueueEndedListener
+): EventSubscription;
+export function addEventListener(
+  event: typeof Event.PlaybackError,
+  listener: ErrorListener
+): EventSubscription;
+export function addEventListener(
+  event: typeof Event.PlaybackProgressUpdated,
+  listener: ProgressListener
+): EventSubscription;
+export function addEventListener(
+  event: typeof Event.PlaybackPlayWhenReadyChanged,
+  listener: PlayWhenReadyListener
+): EventSubscription;
+export function addEventListener(
+  event:
+    | typeof Event.RemotePlay
+    | typeof Event.RemotePause
+    | typeof Event.RemotePlayPause
+    | typeof Event.RemoteStop
+    | typeof Event.RemoteNext
+    | typeof Event.RemotePrevious,
   listener: EmptyRemoteListener
 ): EventSubscription;
 export function addEventListener(
   event: EventType,
-  listener: EmptyRemoteListener | DuckRemoteListener
+  listener: (...args: any[]) => void
 ): EventSubscription {
   if (Platform.OS === 'web') {
     return { remove() {} };
   }
+
   if (event === Event.RemoteDuck) {
     const subscription = NativeModule.addListener(Event.RemoteDuck, (payload: RemoteDuckEvent) => {
       (listener as DuckRemoteListener)({
@@ -51,8 +95,26 @@ export function addEventListener(
     };
   }
 
-  const subscription = NativeModule.addListener(event, () => {
-    (listener as EmptyRemoteListener)();
+  if (
+    event === Event.RemotePlay ||
+    event === Event.RemotePause ||
+    event === Event.RemotePlayPause ||
+    event === Event.RemoteStop ||
+    event === Event.RemoteNext ||
+    event === Event.RemotePrevious
+  ) {
+    const subscription = NativeModule.addListener(event, () => {
+      (listener as EmptyRemoteListener)();
+    });
+    return {
+      remove() {
+        subscription.remove();
+      },
+    };
+  }
+
+  const subscription = NativeModule.addListener(event as any, (payload: any) => {
+    listener(payload);
   });
   return {
     remove() {
@@ -62,19 +124,8 @@ export function addEventListener(
 }
 
 /**
- * Register the JS playback service that owns remote policy (Bible: verse next/prev, etc.).
- *
- * Call once at app entry — before `registerRootComponent` / `AppRegistry.registerComponent`.
- * Do not call from `useEffect`.
- *
- * @example
- * ```ts
- * registerPlaybackService(() => playbackService);
- * ```
- *
- * Android: `AppRegistry.registerHeadlessTask(HEADLESS_TASK_NAME, factory)`.
- * iOS: runs `factory()` then the handler via `setImmediate`.
- * Web: no-op.
+ * Register the JS playback service that owns remote policy.
+ * Call once at app entry — before `registerRootComponent`.
  */
 export function registerPlaybackService(factory: PlaybackServiceFactory): void {
   if (Platform.OS === 'web') {
@@ -91,7 +142,6 @@ export function registerPlaybackService(factory: PlaybackServiceFactory): void {
   registered = true;
 
   if (Platform.OS === 'android') {
-    // RN TaskProvider must return (data) => Promise<void>; wrap host handler.
     AppRegistry.registerHeadlessTask(HEADLESS_TASK_NAME, () => {
       const handler = factory();
       return async () => {
@@ -101,11 +151,8 @@ export function registerPlaybackService(factory: PlaybackServiceFactory): void {
     return;
   }
 
-  // iOS / other: factory() → handler; setImmediate invokes the handler.
   setImmediate(() => {
-    Promise.resolve(factory()()).catch(() => {
-      // Host handlers should catch; ignore unhandled rejection here.
-    });
+    Promise.resolve(factory()()).catch(() => {});
   });
 }
 

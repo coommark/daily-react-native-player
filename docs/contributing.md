@@ -42,6 +42,16 @@ Install Expo’s `expo-module` skill for agents editing native modules:
 npx skills@latest add expo/skills --skill 'expo-module'
 ```
 
+## Test matrix
+
+| Layer | What it covers |
+| --- | --- |
+| **Jest** (`yarn test`) | Public exports, validation, option merge, event wire-name parity, web stubs |
+| **Device / emulator** | Real queue auto-advance, MediaSession remotes→JS→skip*, now-playing refresh, progress ticks |
+| **Android `assembleRelease`** | After `consumer-rules.pro` / Media3 changes |
+
+Emulator audio is non-authoritative for P0 lock-screen QA; prefer a physical device for remotes.
+
 ## Naming
 
 Do not name commercial predecessor libraries in code, docs, issues, or commits.

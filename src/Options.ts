@@ -17,6 +17,11 @@ export type PlayerOptions = {
   /** Seconds before demoting FGS after pause/stop. */
   stopForegroundGracePeriod: number;
   autoHandleInterruptions: boolean;
+  /**
+   * Seconds between `playback-progress-updated` events.
+   * `0` disables progress events. Default `1` (Bible).
+   */
+  progressUpdateEventInterval: number;
 };
 
 export type PlayerOptionsInput = Partial<{
@@ -25,6 +30,7 @@ export type PlayerOptionsInput = Partial<{
   appKilledPlaybackBehavior: AppKilledPlaybackBehaviorValue;
   stopForegroundGracePeriod: number;
   autoHandleInterruptions: boolean;
+  progressUpdateEventInterval: number;
 }>;
 
 export const DEFAULT_PLAYER_OPTIONS: PlayerOptions = {
@@ -33,6 +39,7 @@ export const DEFAULT_PLAYER_OPTIONS: PlayerOptions = {
   appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
   stopForegroundGracePeriod: 5,
   autoHandleInterruptions: false,
+  progressUpdateEventInterval: 1,
 };
 
 const VALID_KILL = new Set<string>(Object.values(AppKilledPlaybackBehavior));
@@ -101,6 +108,14 @@ export function mergePlayerOptions(
     next.autoHandleInterruptions = partial.autoHandleInterruptions;
   }
 
+  if (
+    typeof partial.progressUpdateEventInterval === 'number' &&
+    Number.isFinite(partial.progressUpdateEventInterval) &&
+    partial.progressUpdateEventInterval >= 0
+  ) {
+    next.progressUpdateEventInterval = partial.progressUpdateEventInterval;
+  }
+
   return next;
 }
 
@@ -112,5 +127,6 @@ export function optionsToNativeMap(options: PlayerOptions): Record<string, unkno
     appKilledPlaybackBehavior: options.appKilledPlaybackBehavior,
     stopForegroundGracePeriod: options.stopForegroundGracePeriod,
     autoHandleInterruptions: options.autoHandleInterruptions,
+    progressUpdateEventInterval: options.progressUpdateEventInterval,
   };
 }

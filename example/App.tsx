@@ -1,14 +1,22 @@
 import {
   AppKilledPlaybackBehavior,
   Capability,
+  Event,
   add,
+  addEventListener,
+  getActiveTrack,
+  getActiveTrackIndex,
   getPlaybackState,
   getProgress,
+  getQueue,
   pause,
   play,
+  remove,
   reset,
   seekTo,
   setupPlayer,
+  skipToNext,
+  skipToPrevious,
   updateNowPlayingMetadata,
 } from 'daily-react-native-player';
 import { useEffect, useState } from 'react';
@@ -56,6 +64,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [notifPerm, setNotifPerm] = useState('…');
+  const [queueLen, setQueueLen] = useState(0);
+  const [activeIndex, setActiveIndex] = useState<number | undefined>();
+  const [activeTitle, setActiveTitle] = useState<string>('');
+  const [lastEvent, setLastEvent] = useState<string>('');
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +87,7 @@ export default function App() {
           ],
           appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
           autoUpdateMetadata: true,
+          progressUpdateEventInterval: 1,
         });
         if (!cancelled) {
           setReady(true);
@@ -94,15 +107,47 @@ export default function App() {
     if (!ready) {
       return;
     }
+    const subs = [
+      addEventListener(Event.PlaybackState, (e) => {
+        setState(e.state);
+        setLastEvent(`state:${e.state}`);
+      }),
+      addEventListener(Event.PlaybackActiveTrackChanged, (e) => {
+        setActiveIndex(e.index ?? undefined);
+        setActiveTitle(e.track?.title ?? e.track?.id ?? '');
+        setLastEvent(`active:${e.index}`);
+      }),
+      addEventListener(Event.PlaybackQueueEnded, () => {
+        setLastEvent('queue-ended');
+      }),
+      addEventListener(Event.PlaybackProgressUpdated, (e) => {
+        setProgress(e);
+      }),
+    ];
+    return () => {
+      for (const s of subs) s.remove();
+    };
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
     const id = setInterval(() => {
       void (async () => {
         try {
-          const [nextState, nextProgress] = await Promise.all([
+          const [nextState, nextProgress, q, idx, track] = await Promise.all([
             getPlaybackState(),
             getProgress(),
+            getQueue(),
+            getActiveTrackIndex(),
+            getActiveTrack(),
           ]);
           setState(nextState);
           setProgress(nextProgress);
+          setQueueLen(q.length);
+          setActiveIndex(idx);
+          setActiveTitle(track?.title ?? track?.id ?? '');
         } catch {
           // ignore poll errors
         }
@@ -128,7 +173,8 @@ export default function App() {
           Built primarily for Daily Bible - Offline & Audio
         </Text>
         <Text style={styles.hint}>
-          Android: allow notifications when prompted, then Play — check shade + lock screen.
+          Android: allow notifications when prompted, then Play — check shade + lock screen. Next/Prev
+          remotes call skip* via playbackService.
         </Text>
         <Text
           style={styles.link}
@@ -154,9 +200,13 @@ export default function App() {
           <Text style={styles.statusLine}>notifications: {notifPerm}</Text>
           <Text style={styles.statusLine}>state: {state}</Text>
           <Text style={styles.statusLine}>
+            queue: {queueLen} · active: {activeIndex ?? '—'} {activeTitle ? `(${activeTitle})` : ''}
+          </Text>
+          <Text style={styles.statusLine}>
             progress: {progress.position.toFixed(1)}s / {progress.duration.toFixed(1)}s
             (buf {progress.buffered.toFixed(1)}s)
           </Text>
+          <Text style={styles.statusLine}>last event: {lastEvent || '—'}</Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </Group>
 
@@ -170,15 +220,29 @@ export default function App() {
               ]}
               onPress={() =>
                 run(async () => {
-                  await add({
-                    url: requireAssetUri(localWav, 'WAV'),
-                    title: 'Hymn',
-                    artist: 'Daily Bible',
-                    album: 'Example',
-                  });
+                  await add([
+                    {
+                      url: requireAssetUri(localWav, 'WAV'),
+                      title: 'Hymn',
+                      artist: 'Daily Bible',
+                      album: 'Example',
+                    },
+                    {
+                      url: requireAssetUri(localMp3, 'MP3'),
+                      title: 'Instrumentals',
+                      artist: 'Daily Bible',
+                      album: 'Example',
+                    },
+                    {
+                      url: requireAssetUri(localWav, 'WAV'),
+                      title: 'Hymn (again)',
+                      artist: 'Daily Bible',
+                      album: 'Example',
+                    },
+                  ]);
                 })
               }>
-              <Text style={styles.btnLabel}>Load WAV (hynm.wav)</Text>
+              <Text style={styles.btnLabel}>Load multi-track queue (3)</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -188,6 +252,26 @@ export default function App() {
               ]}
               onPress={() =>
                 run(async () => {
+                  await reset();
+                  await add({
+                    url: requireAssetUri(localWav, 'WAV'),
+                    title: 'Hymn',
+                    artist: 'Daily Bible',
+                    album: 'Example',
+                  });
+                })
+              }>
+              <Text style={styles.btnLabel}>Load WAV (reset + add)</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  await reset();
                   await add({
                     url: requireAssetUri(localMp3, 'MP3'),
                     title: 'Instrumentals',
@@ -196,7 +280,7 @@ export default function App() {
                   });
                 })
               }>
-              <Text style={styles.btnLabel}>Load MP3 (instrumentals.mp3)</Text>
+              <Text style={styles.btnLabel}>Load MP3 (reset + add)</Text>
             </Pressable>
           </View>
         </Group>
@@ -220,6 +304,40 @@ export default function App() {
               ]}
               onPress={() => run(() => pause())}>
               <Text style={styles.btnLabel}>Pause</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() => run(() => skipToNext())}>
+              <Text style={styles.btnLabel}>Skip next</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() => run(() => skipToPrevious())}>
+              <Text style={styles.btnLabel}>Skip previous</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  const idx = await getActiveTrackIndex();
+                  if (idx != null) {
+                    await remove(idx);
+                  }
+                })
+              }>
+              <Text style={styles.btnLabel}>Remove active</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [

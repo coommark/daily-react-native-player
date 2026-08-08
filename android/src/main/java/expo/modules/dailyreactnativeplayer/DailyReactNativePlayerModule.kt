@@ -18,8 +18,6 @@ class DailyReactNativePlayerModule : Module() {
     }
 
     OnDestroy {
-      // Keep emitter when ContinuePlayback leaves FGS alive — remotes may still need hub
-      // until React recreates the module. Clear only on full teardown path.
       val keepAlive =
         SpeechEngine.getKillBehavior() == SpeechEngine.KillBehavior.CONTINUE &&
           SessionHolder.isFgsLikelyActive()
@@ -27,6 +25,14 @@ class DailyReactNativePlayerModule : Module() {
         RemoteEventHub.setEmitter(null)
       }
       SpeechEngine.releaseIfAllowed()
+    }
+
+    OnStartObserving(RemoteEventHub.PLAYBACK_PROGRESS_UPDATED) {
+      RemoteEventHub.setProgressObserving(true)
+    }
+
+    OnStopObserving(RemoteEventHub.PLAYBACK_PROGRESS_UPDATED) {
+      RemoteEventHub.setProgressObserving(false)
     }
 
     AsyncFunction("setupPlayer") { options: Map<String, Any?>? ->
@@ -43,12 +49,40 @@ class DailyReactNativePlayerModule : Module() {
       SessionHolder.applyOptions(options)
     }
 
-    AsyncFunction("add") { track: Map<String, Any?> ->
-      val url = track["url"] as? String
-      if (url.isNullOrBlank()) {
-        throw CodedException("invalid_argument", "Track url must not be empty", null)
-      }
-      SpeechEngine.add(url, track)
+    AsyncFunction("add") { tracks: List<Map<String, Any?>>, insertBeforeIndex: Int? ->
+      SpeechEngine.addTracks(tracks, insertBeforeIndex)
+    }
+
+    AsyncFunction("remove") { indexes: List<Int> ->
+      SpeechEngine.remove(indexes)
+    }
+
+    AsyncFunction("getQueue") {
+      SpeechEngine.getQueue()
+    }
+
+    AsyncFunction("getActiveTrack") {
+      SpeechEngine.getActiveTrack()
+    }
+
+    AsyncFunction("getActiveTrackIndex") {
+      SpeechEngine.getActiveTrackIndex()
+    }
+
+    AsyncFunction("skip") { index: Int ->
+      SpeechEngine.skip(index)
+    }
+
+    AsyncFunction("skipToNext") {
+      SpeechEngine.skipToNext()
+    }
+
+    AsyncFunction("skipToPrevious") {
+      SpeechEngine.skipToPrevious()
+    }
+
+    AsyncFunction("updateMetadataForTrack") { index: Int, metadata: Map<String, Any?> ->
+      SpeechEngine.updateMetadataForTrack(index, metadata)
     }
 
     AsyncFunction("updateNowPlayingMetadata") { metadata: Map<String, Any?> ->

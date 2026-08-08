@@ -36,9 +36,9 @@ Then `npx expo prebuild` (or a continuous native generation workflow).
 
 Bare React Native hosts: see the manual Info.plist / AndroidManifest snippet in [`background-playback.md`](./background-playback.md).
 
-## Playback service (T5 — required for remotes)
+## Playback service (T5 — required for lock screen & Bluetooth remotes)
 
-Register **before** the root component so Android headless remotes hit JS:
+Lock screen, notification shade, Control Center, and **Bluetooth / headset** buttons only work if you register a JS playback service **before** the root component (Android headless remotes need this to keep JS alive):
 
 ```ts
 // index.ts
@@ -51,7 +51,9 @@ registerPlaybackService(() => playbackService);
 registerRootComponent(App);
 ```
 
-See [`api.md`](./api.md) for `Event.Remote*` handlers. Do not use `expo-background-task` for this.
+In `playbackService`, handle `Event.RemotePlay` / `RemotePause` / `RemoteNext` / … and call `play()`, `pause()`, `skipToNext()`, etc. Remotes are **emit-only** — they do not surprise-play without your handler.
+
+See [`background-playback.md`](./background-playback.md) (P0 surfaces) and [`api.md`](./api.md) (`Event.Remote*`). Do not use `expo-background-task` for this.
 
 ## Progressive playback (T3)
 
@@ -70,12 +72,14 @@ import { Image } from 'react-native';
 
 await setupPlayer();
 
-// Remote progressive (HTTPS preferred)
+// Single track — add to an empty queue (or reset first to replace)
+await reset();
 await add({ url: 'https://example.com/chapter.mp3', title: 'Chapter 1' });
 await play();
 
 // Local bundled asset — resolve before add
 const asset = Image.resolveAssetSource(require('./assets/hynm.wav'));
+await reset();
 await add({ url: asset.uri });
 await play();
 
@@ -86,7 +90,48 @@ await pause();
 await reset();
 ```
 
-See [`api.md`](./api.md) for URI rules, errors, and single-source `add` semantics.
+`add` **appends**. To replace content: `reset()` then `add(...)`. See [`api.md`](./api.md).
+
+## Multi-track playlist (T6)
+
+Load a whole chapter (or lesson) as a playlist. Tracks auto-advance; Playback\* events drive UI; lock-screen Next/Previous hit your `registerPlaybackService` → call `skipToNext` / `skipToPrevious`.
+
+```ts
+import {
+  setupPlayer,
+  add,
+  play,
+  skipToNext,
+  getQueue,
+  getActiveTrackIndex,
+  addEventListener,
+  Event,
+} from 'daily-react-native-player';
+
+await setupPlayer({ progressUpdateEventInterval: 1 });
+
+await add([
+  { url: 'https://example.com/v1.wav', title: 'Verse 1' },
+  { url: 'https://example.com/v2.wav', title: 'Verse 2' },
+  { url: 'https://example.com/v3.wav', title: 'Verse 3' },
+]);
+
+addEventListener(Event.PlaybackActiveTrackChanged, ({ index, track }) => {
+  console.log('active', index, track?.title);
+});
+
+addEventListener(Event.PlaybackQueueEnded, () => {
+  console.log('playlist finished');
+});
+
+await play();
+await skipToNext();
+
+const queue = await getQueue();
+const active = await getActiveTrackIndex();
+```
+
+Full guide: [`queue.md`](./queue.md). Example app: **Load multi-track queue (3)** + Skip next/previous.
 
 The example app demos local progressive fixtures under `example/assets/`:
 
@@ -154,6 +199,7 @@ Emulator audio fidelity is non-authoritative for P0 background QA. See the devic
 ## Next
 
 1. Complete T4/T5 physical device QA (remotes → JS while backgrounded)
-2. Queue + Playback* events (T6)
+2. Native silence tracks (T7)
+3. Progressive mutation + `setRate` (T8)
 
 See [`ROADMAP.md`](../ROADMAP.md).

@@ -3,7 +3,15 @@ jest.mock('../DailyReactNativePlayerModule', () => ({
   default: {
     setupPlayer: jest.fn(async () => {}),
     updateOptions: jest.fn(async () => {}),
-    add: jest.fn(async () => {}),
+    add: jest.fn(async () => [0]),
+    remove: jest.fn(async () => {}),
+    getQueue: jest.fn(async () => []),
+    getActiveTrack: jest.fn(async () => null),
+    getActiveTrackIndex: jest.fn(async () => null),
+    skip: jest.fn(async () => {}),
+    skipToNext: jest.fn(async () => {}),
+    skipToPrevious: jest.fn(async () => {}),
+    updateMetadataForTrack: jest.fn(async () => {}),
     updateNowPlayingMetadata: jest.fn(async () => {}),
     play: jest.fn(async () => {}),
     pause: jest.fn(async () => {}),
@@ -17,9 +25,15 @@ jest.mock('../DailyReactNativePlayerModule', () => ({
 }));
 
 const NativeModule = require('../DailyReactNativePlayerModule').default;
-const { AppKilledPlaybackBehavior } = require('../Options');
+const {
+  AppKilledPlaybackBehavior,
+  DEFAULT_PLAYER_OPTIONS,
+  mergePlayerOptions,
+} = require('../Options');
 const {
   add,
+  remove,
+  skip,
   seekTo,
   reset,
   play,
@@ -28,6 +42,7 @@ const {
   updateNowPlayingMetadata,
   updateMetadataForTrack,
   getPlayerOptions,
+  getQueue,
   __resetPlayerJsStateForTests,
 } = require('../Player');
 const { PlayerErrorCode } = require('../errors');
@@ -36,6 +51,8 @@ describe('Player validation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     __resetPlayerJsStateForTests();
+    NativeModule.getActiveTrackIndex.mockResolvedValue(null);
+    NativeModule.add.mockResolvedValue([0]);
   });
 
   it('rejects empty add', async () => {
@@ -82,7 +99,8 @@ describe('Player validation', () => {
     await play();
     expect(NativeModule.setupPlayer).toHaveBeenCalled();
     expect(NativeModule.add).toHaveBeenCalledWith(
-      expect.objectContaining({ url: 'https://example.com/a.mp3' })
+      [expect.objectContaining({ url: 'https://example.com/a.mp3' })],
+      null
     );
     expect(NativeModule.play).toHaveBeenCalled();
   });
@@ -94,24 +112,61 @@ describe('Player validation', () => {
       artist: 'Narrator',
       album: 'Bible',
     });
-    expect(NativeModule.add).toHaveBeenCalledWith({
-      url: 'https://example.com/a.mp3',
-      title: 'Chapter 1',
-      artist: 'Narrator',
-      album: 'Bible',
-    });
+    expect(NativeModule.add).toHaveBeenCalledWith(
+      [
+        {
+          url: 'https://example.com/a.mp3',
+          title: 'Chapter 1',
+          artist: 'Narrator',
+          album: 'Bible',
+        },
+      ],
+      null
+    );
+  });
+
+  it('batch add forwards array and insert index', async () => {
+    NativeModule.getActiveTrackIndex.mockResolvedValue(0);
+    NativeModule.add.mockResolvedValue([1, 2]);
+    const indices = await add(
+      [{ url: 'https://example.com/a.mp3' }, { url: 'https://example.com/b.mp3', id: 'b' }],
+      1
+    );
+    expect(indices).toEqual([1, 2]);
+    expect(NativeModule.add).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ url: 'https://example.com/a.mp3' }),
+        expect.objectContaining({ url: 'https://example.com/b.mp3', id: 'b' }),
+      ],
+      1
+    );
+  });
+
+  it('remove and skip forward to native', async () => {
+    await remove([1, 2]);
+    await skip(0);
+    expect(NativeModule.remove).toHaveBeenCalledWith([1, 2]);
+    expect(NativeModule.skip).toHaveBeenCalledWith(0);
   });
 
   it('updateOptions persists across reset', async () => {
     await updateOptions({
       appKilledPlaybackBehavior: AppKilledPlaybackBehavior.PausePlayback,
       stopForegroundGracePeriod: 9,
+      progressUpdateEventInterval: 0,
     });
     await reset();
     const opts = getPlayerOptions();
     expect(opts.appKilledPlaybackBehavior).toBe(AppKilledPlaybackBehavior.PausePlayback);
     expect(opts.stopForegroundGracePeriod).toBe(9);
+    expect(opts.progressUpdateEventInterval).toBe(0);
     expect(NativeModule.updateOptions).toHaveBeenCalled();
+  });
+
+  it('defaults progressUpdateEventInterval to 1', () => {
+    expect(DEFAULT_PLAYER_OPTIONS.progressUpdateEventInterval).toBe(1);
+    const merged = mergePlayerOptions(DEFAULT_PLAYER_OPTIONS, {});
+    expect(merged.progressUpdateEventInterval).toBe(1);
   });
 
   it('updateNowPlayingMetadata calls native', async () => {
@@ -121,9 +176,16 @@ describe('Player validation', () => {
     );
   });
 
-  it('updateMetadataForTrack rejects non-zero index', async () => {
-    await expect(updateMetadataForTrack(1, { title: 'x' })).rejects.toEqual(
-      expect.objectContaining({ code: PlayerErrorCode.InvalidArgument })
-    );
+  it('updateMetadataForTrack forwards any non-negative index', async () => {
+    await updateMetadataForTrack(1, { title: 'x' });
+    expect(NativeModule.updateMetadataForTrack).toHaveBeenCalledWith(1, { title: 'x' });
+  });
+
+  it('getQueue normalizes native tracks', async () => {
+    NativeModule.getQueue.mockResolvedValue([
+      { id: '1', url: 'https://example.com/a.mp3', title: 'A' },
+    ]);
+    const q = await getQueue();
+    expect(q).toEqual([{ id: '1', url: 'https://example.com/a.mp3', title: 'A' }]);
   });
 });

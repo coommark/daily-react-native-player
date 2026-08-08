@@ -32,5 +32,11 @@ describe('mergePlayerOptions', () => {
     const map = optionsToNativeMap(DEFAULT_PLAYER_OPTIONS);
     expect(map.capabilities).toEqual(expect.arrayContaining(['play', 'pause']));
     expect(map.appKilledPlaybackBehavior).toBe('continue-playback');
+    expect(map.progressUpdateEventInterval).toBe(1);
+  });
+
+  it('merges progressUpdateEventInterval', () => {
+    const merged = mergePlayerOptions(DEFAULT_PLAYER_OPTIONS, { progressUpdateEventInterval: 0 });
+    expect(merged.progressUpdateEventInterval).toBe(0);
   });
 });

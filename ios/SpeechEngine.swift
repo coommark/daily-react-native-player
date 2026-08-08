@@ -3,11 +3,30 @@ import ExpoModulesCore
 
 /**
  * Process-scoped speech player (single AVPlayer owner).
- * Call from the main queue (module AsyncFunctions use `.runOnQueue(.main)`).
- * Now Playing / remotes via [NowPlayingController].
+ * Queue metadata list is authoritative; AVPlayer holds the **active** item only (ADR-15/16).
  */
 final class SpeechEngine {
   static let shared = SpeechEngine()
+
+  private struct QueueTrack {
+    let id: String
+    let url: String
+    var title: String?
+    var artist: String?
+    var album: String?
+    var artwork: String?
+
+    func toDictionary() -> [String: Any?] {
+      [
+        "id": id,
+        "url": url,
+        "title": title,
+        "artist": artist,
+        "album": album,
+        "artwork": artwork,
+      ]
+    }
+  }
 
   private var player: AVPlayer?
   private var playerItem: AVPlayerItem?
@@ -20,12 +39,24 @@ final class SpeechEngine {
   private var playWhenReadyFlag = false
   private var killBehavior = "continue-playback"
   private var fgsProxyActive = false
+  private var autoUpdateMetadata = true
+  private var progressUpdateEventInterval: Double = 1
+  private var progressObserver: Any?
+  private var queue: [QueueTrack] = []
+  private var activeIndex: Int = -1
+  private var queueEpoch: Int64 = 0
+  private var lastEmittedState: String?
+  private var lastPlayWhenReady: Bool?
 
   private init() {}
 
   var isInitialized: Bool { initialized }
 
   func getPlayer() -> AVPlayer? { player }
+
+  func onProgressObservingChanged(_ active: Bool) {
+    refreshProgressObserver()
+  }
 
   func setup() throws {
     if initialized, player != nil {
@@ -40,6 +71,11 @@ final class SpeechEngine {
     pendingSeekSeconds = nil
     lastErrorCode = nil
     playWhenReadyFlag = false
+    queue = []
+    activeIndex = -1
+    queueEpoch = 0
+    lastEmittedState = nil
+    lastPlayWhenReady = nil
   }
 
   func applyOptions(_ options: [String: Any]?) {
@@ -47,28 +83,180 @@ final class SpeechEngine {
     if let kill = options["appKilledPlaybackBehavior"] as? String {
       killBehavior = kill
     }
-    // autoHandleInterruptions applied in NowPlayingController for RemoteDuck
+    if let auto = options["autoUpdateMetadata"] as? Bool {
+      autoUpdateMetadata = auto
+    }
+    if let interval = options["progressUpdateEventInterval"] as? Double, interval >= 0 {
+      progressUpdateEventInterval = interval
+      refreshProgressObserver()
+    } else if let interval = options["progressUpdateEventInterval"] as? Int, interval >= 0 {
+      progressUpdateEventInterval = Double(interval)
+      refreshProgressObserver()
+    }
   }
 
-  func add(urlString: String, metadata: [String: Any]? = nil) throws {
+  @discardableResult
+  func addTracks(_ tracks: [[String: Any]], insertBeforeIndex: Int?) throws -> [Int] {
     try ensureInitialized()
-    guard let url = URL(string: urlString) else {
-      throw Exception(name: "unsupported_url", description: "Invalid media url", code: "unsupported_url")
+    guard !tracks.isEmpty else {
+      throw Exception(name: "invalid_argument", description: "add() requires at least one track", code: "invalid_argument")
     }
-    if url.scheme?.lowercased() == "content" {
-      throw Exception(name: "unsupported_url", description: "content:// urls are Android-only", code: "unsupported_url")
+    let insertAt: Int
+    if let insertBeforeIndex {
+      guard insertBeforeIndex >= 0, insertBeforeIndex <= queue.count else {
+        throw Exception(name: "invalid_argument", description: "insertBeforeIndex out of range", code: "invalid_argument")
+      }
+      insertAt = insertBeforeIndex
+    } else {
+      insertAt = queue.count
     }
-    tearDownItemObservers()
+    let wasEmpty = queue.isEmpty
+    var entries: [QueueTrack] = []
+    for raw in tracks {
+      guard let url = raw["url"] as? String, !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        throw Exception(name: "invalid_argument", description: "Track url must not be empty", code: "invalid_argument")
+      }
+      if let scheme = URL(string: url)?.scheme?.lowercased(), scheme == "content" {
+        throw Exception(name: "unsupported_url", description: "content:// urls are Android-only", code: "unsupported_url")
+      }
+      let id: String
+      if let provided = raw["id"] as? String, !provided.isEmpty {
+        id = provided
+      } else {
+        id = UUID().uuidString
+      }
+      entries.append(
+        QueueTrack(
+          id: id,
+          url: url,
+          title: raw["title"] as? String,
+          artist: raw["artist"] as? String,
+          album: raw["album"] as? String,
+          artwork: raw["artwork"] as? String
+        )
+      )
+    }
+    queueEpoch += 1
     lastErrorCode = nil
-    let item = AVPlayerItem(url: url)
-    playerItem = item
-    player?.replaceCurrentItem(with: item)
-    hasSource = true
-    observeItem(item)
-    if playWhenReadyFlag {
-      player?.play()
+    queue.insert(contentsOf: entries, at: insertAt)
+    if activeIndex >= insertAt && !wasEmpty {
+      activeIndex += entries.count
     }
-    NowPlayingController.shared.applyTrackMetadata(metadata)
+    let indices = Array(insertAt..<(insertAt + entries.count))
+    if wasEmpty {
+      try activateIndex(0, emitActive: true)
+    }
+    return indices
+  }
+
+  func remove(indexes: [Int]) throws {
+    try ensureInitialized()
+    guard !indexes.isEmpty else { return }
+    let unique = Set(indexes)
+    for i in unique {
+      guard i >= 0, i < queue.count else {
+        throw Exception(name: "invalid_argument", description: "remove index out of range", code: "invalid_argument")
+      }
+    }
+    let sorted = unique.sorted(by: >)
+    let removingActive = unique.contains(activeIndex)
+    let last = activeTrackOrNil()
+    let lastIdx: Int? = activeIndex >= 0 ? activeIndex : nil
+    queueEpoch += 1
+    for i in sorted {
+      queue.remove(at: i)
+      if i < activeIndex {
+        activeIndex -= 1
+      } else if i == activeIndex {
+        activeIndex = -1
+      }
+    }
+    if queue.isEmpty {
+      clearPlayer()
+      emitActiveTrackChanged(index: nil, track: nil, lastIndex: lastIdx, lastTrack: last)
+      emitStateIfChanged(force: "none")
+      refreshProgressObserver()
+      return
+    }
+    if removingActive {
+      let next: Int
+      if activeIndex >= 0 && activeIndex < queue.count {
+        next = activeIndex
+      } else if let lastIdx, lastIdx < queue.count {
+        next = lastIdx
+      } else if let lastIdx, lastIdx - 1 >= 0 {
+        next = lastIdx - 1
+      } else {
+        next = 0
+      }
+      try activateIndex(next, emitActive: true, lastIndex: lastIdx, lastTrack: last)
+    } else if activeIndex >= 0 {
+      emitActiveTrackChanged(index: activeIndex, track: activeTrackOrNil(), lastIndex: lastIdx, lastTrack: last)
+    }
+  }
+
+  func getQueue() -> [[String: Any?]] {
+    guard initialized else { return [] }
+    return queue.map { $0.toDictionary() }
+  }
+
+  func getActiveTrack() -> [String: Any?]? {
+    guard initialized else { return nil }
+    return activeTrackOrNil()?.toDictionary()
+  }
+
+  func getActiveTrackIndex() -> Int? {
+    guard initialized, activeIndex >= 0, activeIndex < queue.count else { return nil }
+    return activeIndex
+  }
+
+  func skip(index: Int) throws {
+    try ensureInitialized()
+    guard index >= 0, index < queue.count else {
+      throw Exception(name: "invalid_argument", description: "skip index out of range", code: "invalid_argument")
+    }
+    if index == activeIndex {
+      player?.seek(to: .zero)
+      return
+    }
+    let last = activeTrackOrNil()
+    let lastIdx: Int? = activeIndex >= 0 ? activeIndex : nil
+    queueEpoch += 1
+    try activateIndex(index, emitActive: true, lastIndex: lastIdx, lastTrack: last)
+  }
+
+  func skipToNext() throws {
+    try ensureInitialized()
+    guard !queue.isEmpty else {
+      throw Exception(name: "no_source", description: "No media source loaded", code: "no_source")
+    }
+    guard activeIndex >= 0, activeIndex < queue.count - 1 else { return }
+    try skip(index: activeIndex + 1)
+  }
+
+  func skipToPrevious() throws {
+    try ensureInitialized()
+    guard !queue.isEmpty else {
+      throw Exception(name: "no_source", description: "No media source loaded", code: "no_source")
+    }
+    guard activeIndex > 0 else { return }
+    try skip(index: activeIndex - 1)
+  }
+
+  func updateMetadataForTrack(index: Int, metadata: [String: Any]) throws {
+    try ensureInitialized()
+    guard index >= 0, index < queue.count else {
+      throw Exception(name: "invalid_argument", description: "updateMetadataForTrack index out of range", code: "invalid_argument")
+    }
+    if let title = metadata["title"] as? String { queue[index].title = title }
+    if let artist = metadata["artist"] as? String { queue[index].artist = artist }
+    if let album = metadata["album"] as? String { queue[index].album = album }
+    if metadata.keys.contains("artwork") {
+      queue[index].artwork = metadata["artwork"] as? String
+    }
+    if index == activeIndex && autoUpdateMetadata {
+      NowPlayingController.shared.applyTrackMetadata(queue[index].toDictionary().compactMapValues { $0 })
+    }
   }
 
   func updateNowPlayingMetadata(_ metadata: [String: Any]) {
@@ -83,6 +271,7 @@ final class SpeechEngine {
     try activateAudioSession()
     playWhenReadyFlag = true
     fgsProxyActive = true
+    emitPlayWhenReadyIfChanged(true)
     if player?.currentItem?.status == .failed {
       throw Exception(name: "playback_failed", description: "Player item failed", code: "playback_failed")
     }
@@ -93,13 +282,18 @@ final class SpeechEngine {
     }
     player?.play()
     NowPlayingController.shared.syncFromEngine()
+    emitStateIfChanged()
+    refreshProgressObserver()
   }
 
   func pause() {
     guard initialized else { return }
     playWhenReadyFlag = false
+    emitPlayWhenReadyIfChanged(false)
     player?.pause()
     NowPlayingController.shared.syncFromEngine()
+    emitStateIfChanged()
+    refreshProgressObserver()
   }
 
   func seekTo(positionSeconds: Double) throws {
@@ -146,6 +340,187 @@ final class SpeechEngine {
   }
 
   func getPlaybackState() -> String {
+    computeState()
+  }
+
+  func getPlayWhenReady() -> Bool { playWhenReadyFlag }
+
+  func setPlayWhenReady(_ value: Bool) throws {
+    try ensureInitialized()
+    if value && !hasSource {
+      throw Exception(name: "no_source", description: "No media source loaded", code: "no_source")
+    }
+    playWhenReadyFlag = value
+    emitPlayWhenReadyIfChanged(value)
+    if value {
+      try activateAudioSession()
+      player?.play()
+      fgsProxyActive = true
+    } else {
+      player?.pause()
+    }
+    NowPlayingController.shared.syncFromEngine()
+    emitStateIfChanged()
+    refreshProgressObserver()
+  }
+
+  func reset() {
+    guard initialized else { return }
+    tearDownItemObservers()
+    removeProgressObserver()
+    let last = activeTrackOrNil()
+    let lastIdx: Int? = activeIndex >= 0 ? activeIndex : nil
+    queueEpoch += 1
+    queue = []
+    activeIndex = -1
+    player?.pause()
+    player?.replaceCurrentItem(with: nil)
+    playerItem = nil
+    hasSource = false
+    pendingSeekSeconds = nil
+    lastErrorCode = nil
+    playWhenReadyFlag = false
+    NowPlayingController.shared.clearDisplay()
+    emitActiveTrackChanged(index: nil, track: nil, lastIndex: lastIdx, lastTrack: last)
+    emitPlayWhenReadyIfChanged(false)
+    emitStateIfChanged(force: "none")
+  }
+
+  func releaseIfAllowed() {
+    if shouldKeepAliveOnModuleDestroy() {
+      return
+    }
+    releaseEngine()
+  }
+
+  func shouldKeepAliveOnModuleDestroy() -> Bool {
+    return killBehavior == "continue-playback" && fgsProxyActive && playWhenReadyFlag
+  }
+
+  func releaseEngine() {
+    tearDownItemObservers()
+    removeProgressObserver()
+    NowPlayingController.shared.tearDown()
+    player?.pause()
+    player?.replaceCurrentItem(with: nil)
+    player = nil
+    playerItem = nil
+    initialized = false
+    hasSource = false
+    pendingSeekSeconds = nil
+    lastErrorCode = nil
+    playWhenReadyFlag = false
+    fgsProxyActive = false
+    queue = []
+    activeIndex = -1
+  }
+
+  private func activateIndex(
+    _ index: Int,
+    emitActive: Bool,
+    lastIndex: Int? = nil,
+    lastTrack: QueueTrack? = nil
+  ) throws {
+    guard index >= 0, index < queue.count else { return }
+    let track = queue[index]
+    guard let url = URL(string: track.url) else {
+      throw Exception(name: "unsupported_url", description: "Invalid media url", code: "unsupported_url")
+    }
+    let resolvedLastIndex = lastIndex ?? (activeIndex >= 0 ? activeIndex : nil)
+    let resolvedLastTrack = lastTrack ?? activeTrackOrNil()
+    tearDownItemObservers()
+    lastErrorCode = nil
+    activeIndex = index
+    let item = AVPlayerItem(url: url)
+    playerItem = item
+    player?.replaceCurrentItem(with: item)
+    hasSource = true
+    observeItem(item)
+    if playWhenReadyFlag {
+      player?.play()
+    }
+    if autoUpdateMetadata {
+      NowPlayingController.shared.applyTrackMetadata(track.toDictionary().compactMapValues { $0 })
+    }
+    if emitActive {
+      emitActiveTrackChanged(index: index, track: track, lastIndex: resolvedLastIndex, lastTrack: resolvedLastTrack)
+    }
+    emitStateIfChanged()
+    refreshProgressObserver()
+  }
+
+  private func clearPlayer() {
+    tearDownItemObservers()
+    player?.pause()
+    player?.replaceCurrentItem(with: nil)
+    playerItem = nil
+    hasSource = false
+    pendingSeekSeconds = nil
+    lastErrorCode = nil
+    playWhenReadyFlag = false
+    NowPlayingController.shared.clearDisplay()
+  }
+
+  private func activeTrackOrNil() -> QueueTrack? {
+    guard activeIndex >= 0, activeIndex < queue.count else { return nil }
+    return queue[activeIndex]
+  }
+
+  private func handleTrackEnded() {
+    guard !queue.isEmpty, activeIndex >= 0 else {
+      emitStateIfChanged(force: "ended")
+      return
+    }
+    if activeIndex < queue.count - 1 {
+      let last = activeTrackOrNil()
+      let lastIdx = activeIndex
+      let pwr = playWhenReadyFlag
+      queueEpoch += 1
+      do {
+        try activateIndex(activeIndex + 1, emitActive: true, lastIndex: lastIdx, lastTrack: last)
+        playWhenReadyFlag = pwr
+        if pwr {
+          player?.play()
+        }
+      } catch {
+        lastErrorCode = "load_failed"
+        emitPlaybackError(code: "load_failed", message: error.localizedDescription)
+        emitStateIfChanged(force: "error")
+      }
+      return
+    }
+    playWhenReadyFlag = false
+    emitPlayWhenReadyIfChanged(false)
+    emitStateIfChanged(force: "ended")
+    let track = activeTrackOrNil()
+    let idx = activeIndex
+    let position = getProgress()["position"] ?? 0
+    var body: [String: Any] = ["position": position]
+    if idx >= 0 { body["index"] = idx }
+    if let track {
+      body["track"] = track.toDictionary().compactMapValues { $0 }
+    } else {
+      body["track"] = NSNull()
+    }
+    RemoteEventHub.shared.emit(.playbackQueueEnded, body: body)
+    refreshProgressObserver()
+  }
+
+  private func emitActiveTrackChanged(
+    index: Int?,
+    track: QueueTrack?,
+    lastIndex: Int?,
+    lastTrack: QueueTrack?
+  ) {
+    var body: [String: Any] = [:]
+    body["index"] = index ?? NSNull()
+    body["lastIndex"] = lastIndex ?? NSNull()
+    body["track"] = track.map { $0.toDictionary().compactMapValues { $0 } } ?? NSNull()
+    body["lastTrack"] = lastTrack.map { $0.toDictionary().compactMapValues { $0 } } ?? NSNull()
+    RemoteEventHub.shared.emit(.playbackActiveTrackChanged, body: body)
+  }
+
+  private func computeState() -> String {
     guard initialized, player != nil else { return "none" }
     if lastErrorCode != nil { return "error" }
     guard hasSource, let item = playerItem else { return "none" }
@@ -173,62 +548,55 @@ final class SpeechEngine {
     return item.status == .readyToPlay ? "ready" : "loading"
   }
 
-  func getPlayWhenReady() -> Bool { playWhenReadyFlag }
-
-  func setPlayWhenReady(_ value: Bool) throws {
-    try ensureInitialized()
-    if value && !hasSource {
-      throw Exception(name: "no_source", description: "No media source loaded", code: "no_source")
-    }
-    playWhenReadyFlag = value
-    if value {
-      try activateAudioSession()
-      player?.play()
-      fgsProxyActive = true
-    } else {
-      player?.pause()
-    }
-    NowPlayingController.shared.syncFromEngine()
+  private func emitStateIfChanged(force: String? = nil) {
+    let state = force ?? computeState()
+    guard state != lastEmittedState else { return }
+    lastEmittedState = state
+    RemoteEventHub.shared.emit(.playbackState, body: ["state": state])
   }
 
-  func reset() {
-    guard initialized else { return }
-    tearDownItemObservers()
-    player?.pause()
-    player?.replaceCurrentItem(with: nil)
-    playerItem = nil
-    hasSource = false
-    pendingSeekSeconds = nil
-    lastErrorCode = nil
-    playWhenReadyFlag = false
-    NowPlayingController.shared.clearDisplay()
+  private func emitPlayWhenReadyIfChanged(_ value: Bool) {
+    guard lastPlayWhenReady != value else { return }
+    lastPlayWhenReady = value
+    RemoteEventHub.shared.emit(.playbackPlayWhenReadyChanged, body: ["playWhenReady": value])
   }
 
-  func releaseIfAllowed() {
-    if shouldKeepAliveOnModuleDestroy() {
+  private func emitPlaybackError(code: String, message: String) {
+    var body: [String: Any] = ["code": code, "message": message]
+    if let track = activeTrackOrNil() {
+      body["trackId"] = track.id
+    }
+    if activeIndex >= 0 {
+      body["index"] = activeIndex
+    }
+    RemoteEventHub.shared.emit(.playbackError, body: body)
+  }
+
+  private func refreshProgressObserver() {
+    removeProgressObserver()
+    guard progressUpdateEventInterval > 0,
+          RemoteEventHub.shared.isProgressObserving(),
+          computeState() == "playing",
+          let player else {
       return
     }
-    releaseEngine()
+    let interval = CMTime(seconds: progressUpdateEventInterval, preferredTimescale: 600)
+    let epoch = queueEpoch
+    progressObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
+      guard let self else { return }
+      guard epoch == self.queueEpoch else { return }
+      guard RemoteEventHub.shared.isProgressObserving(), self.progressUpdateEventInterval > 0 else { return }
+      guard self.computeState() == "playing" else { return }
+      let progress = self.getProgress()
+      RemoteEventHub.shared.emit(.playbackProgressUpdated, body: progress)
+    }
   }
 
-  /// ContinuePlayback while "FGS proxy" + play-when-ready — keep engine (and remotes hub).
-  func shouldKeepAliveOnModuleDestroy() -> Bool {
-    return killBehavior == "continue-playback" && fgsProxyActive && playWhenReadyFlag
-  }
-
-  func releaseEngine() {
-    tearDownItemObservers()
-    NowPlayingController.shared.tearDown()
-    player?.pause()
-    player?.replaceCurrentItem(with: nil)
-    player = nil
-    playerItem = nil
-    initialized = false
-    hasSource = false
-    pendingSeekSeconds = nil
-    lastErrorCode = nil
-    playWhenReadyFlag = false
-    fgsProxyActive = false
+  private func removeProgressObserver() {
+    if let progressObserver, let player {
+      player.removeTimeObserver(progressObserver)
+    }
+    progressObserver = nil
   }
 
   private func ensureInitialized() throws {
@@ -262,8 +630,11 @@ final class SpeechEngine {
         case .readyToPlay:
           self.flushPendingSeek()
           NowPlayingController.shared.syncFromEngine()
+          self.emitStateIfChanged()
         case .failed:
           self.lastErrorCode = "load_failed"
+          self.emitPlaybackError(code: "load_failed", message: observed.error?.localizedDescription ?? "load_failed")
+          self.emitStateIfChanged(force: "error")
         default:
           break
         }
@@ -274,8 +645,7 @@ final class SpeechEngine {
       object: item,
       queue: .main
     ) { [weak self] _ in
-      self?.playWhenReadyFlag = false
-      NowPlayingController.shared.syncFromEngine()
+      self?.handleTrackEnded()
     }
   }
 

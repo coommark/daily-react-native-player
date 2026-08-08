@@ -24,7 +24,42 @@ class DailyReactNativePlayerModule extends NativeModule {
     unsupported();
   }
 
-  async add(_track: Record<string, unknown>): Promise<void> {
+  async add(
+    _tracks: Record<string, unknown>[],
+    _insertBeforeIndex?: number | null
+  ): Promise<number[]> {
+    unsupported();
+  }
+
+  async remove(_indexes: number[]): Promise<void> {
+    unsupported();
+  }
+
+  async getQueue(): Promise<Record<string, unknown>[]> {
+    unsupported();
+  }
+
+  async getActiveTrack(): Promise<Record<string, unknown> | null> {
+    unsupported();
+  }
+
+  async getActiveTrackIndex(): Promise<number | null> {
+    unsupported();
+  }
+
+  async skip(_index: number): Promise<void> {
+    unsupported();
+  }
+
+  async skipToNext(): Promise<void> {
+    unsupported();
+  }
+
+  async skipToPrevious(): Promise<void> {
+    unsupported();
+  }
+
+  async updateMetadataForTrack(_index: number, _metadata: Record<string, unknown>): Promise<void> {
     unsupported();
   }
 

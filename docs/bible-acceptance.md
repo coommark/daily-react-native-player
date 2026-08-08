@@ -14,14 +14,16 @@ Keep contract tests aligned with this list.
 
 ## Queue
 
-- [ ] `add` (append + insert at index) — T3/T4 ship single-source `add` (replace current item); full queue semantics = T6
-- [ ] `remove`
-- [ ] `getQueue` / `getActiveTrack` / `getActiveTrackIndex`
+Speech **playlist** used for chapter / verse sequences — see [`queue.md`](./queue.md).
+
+- [x] `add` (append + insert at index)
+- [x] `remove`
+- [x] `getQueue` / `getActiveTrack` / `getActiveTrackIndex`
 
 ## Transport
 
 - [x] `play` / `pause`
-- [ ] `skip` / `skipToNext` / `skipToPrevious`
+- [x] `skip` / `skipToNext` / `skipToPrevious`
 - [x] `seekTo`
 - [x] `setPlayWhenReady` / `getPlayWhenReady`
 - [x] `getPlaybackState` / `getProgress`
@@ -30,24 +32,24 @@ Keep contract tests aligned with this list.
 ## Metadata
 
 - [x] `updateNowPlayingMetadata`
-- [x] `updateMetadataForTrack` — index `0` only until T6
+- [x] `updateMetadataForTrack` — any in-range index
 - [x] Forced metadata overrides file tags when needed
 
 ## Events
 
-- [ ] `PlaybackActiveTrackChanged`
-- [ ] `PlaybackState`
-- [ ] `PlaybackQueueEnded`
-- [ ] `PlaybackError`
-- [ ] `PlaybackProgressUpdated` (~1s interval configurable)
-- [ ] `PlaybackPlayWhenReadyChanged`
+- [x] `PlaybackActiveTrackChanged`
+- [x] `PlaybackState`
+- [x] `PlaybackQueueEnded`
+- [x] `PlaybackError`
+- [x] `PlaybackProgressUpdated` (~1s interval configurable)
+- [x] `PlaybackPlayWhenReadyChanged`
 - [x] `RemoteDuck`
 - [x] `RemotePlay` / `RemotePause` / `RemotePlayPause` / `RemoteStop` / `RemoteNext` / `RemotePrevious`
 
 ## Setup options used by Bible
 
 - [x] Capabilities: Play, Pause, Stop, SkipToNext, SkipToPrevious
-- [ ] `progressUpdateEventInterval`
+- [x] `progressUpdateEventInterval`
 - [x] Android `appKilledPlaybackBehavior: ContinuePlayback`, `stopForegroundGracePeriod`
 - [x] `androidAudioContentType: Speech` — via T3 engine attributes (Speech)
 - [ ] `androidAudioMixMode: 'default' | 'duckOthers'`
