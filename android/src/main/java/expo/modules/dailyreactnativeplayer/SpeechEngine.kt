@@ -19,6 +19,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.SilenceMediaSource
 import expo.modules.kotlin.exception.CodedException
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -31,6 +32,8 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object SpeechEngine {
   private const val TAG = "DailyPlayerSpeech"
+  private const val MAX_SILENCE_DURATION_MS = 300_000L
+  private val silenceUrlRegex = Regex("^silence:(\\d+)$")
   private val mainHandler = Handler(Looper.getMainLooper())
   private val artworkExecutor = Executors.newSingleThreadExecutor()
   private val artworkGeneration = AtomicInteger(0)
@@ -42,16 +45,31 @@ object SpeechEngine {
     var artist: String? = null,
     var album: String? = null,
     var artwork: String? = null,
+    val type: String? = null,
+    val durationMs: Long? = null,
   ) {
-    fun toMap(): Map<String, Any?> =
-      mapOf(
-        "id" to id,
-        "url" to url,
-        "title" to title,
-        "artist" to artist,
-        "album" to album,
-        "artwork" to artwork,
-      )
+    val isSilence: Boolean
+      get() = type == "silence" || (durationMs != null && url.startsWith("silence:"))
+
+    fun toMap(): Map<String, Any?> {
+      val map =
+        mutableMapOf<String, Any?>(
+          "id" to id,
+          "url" to url,
+          "title" to title,
+          "artist" to artist,
+          "album" to album,
+          "artwork" to artwork,
+        )
+      if (type != null) {
+        map["type"] = type
+      }
+      if (durationMs != null) {
+        map["durationMs"] = durationMs
+        map["duration"] = durationMs / 1000.0
+      }
+      return map
+    }
   }
 
   @Volatile
@@ -305,20 +323,7 @@ object SpeechEngine {
       val wasEmpty = queue.isEmpty()
       val entries =
         tracks.map { raw ->
-          val url = raw["url"] as? String
-          if (url.isNullOrBlank()) {
-            throw CodedException("invalid_argument", "Track url must not be empty", null)
-          }
-          val id =
-            (raw["id"] as? String)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
-          QueueTrack(
-            id = id,
-            url = url,
-            title = raw["title"] as? String,
-            artist = raw["artist"] as? String,
-            album = raw["album"] as? String,
-            artwork = raw["artwork"] as? String,
-          )
+          parseQueueTrack(raw)
         }
       queueEpoch++
       lastErrorCode = null
@@ -464,6 +469,7 @@ object SpeechEngine {
         track.artwork = metadata["artwork"] as? String
       }
       if (index == activeIndex && autoUpdateMetadata) {
+        // Silence: re-bind via SilenceMediaSource (never URI setMediaItem with silence:).
         applyTrackToPlayerLocked(track, preservePosition = true)
       }
     }
@@ -474,6 +480,18 @@ object SpeechEngine {
     runOnMainBlocking {
       val exo = requirePlayer()
       if (!hasSource) {
+        return@runOnMainBlocking
+      }
+      val active = activeTrackOrNull()
+      if (active != null && active.isSilence) {
+        (metadata["title"] as? String)?.let { active.title = it }
+        (metadata["artist"] as? String)?.let { active.artist = it }
+        (metadata["album"] as? String)?.let { active.album = it }
+        if (metadata.containsKey("artwork")) {
+          active.artwork = metadata["artwork"] as? String
+        }
+        // Rebuild silence source with updated metadata — do not setMediaItem(silence: URI).
+        applyTrackToPlayerLocked(active, preservePosition = true)
         return@runOnMainBlocking
       }
       val current = exo.currentMediaItem ?: return@runOnMainBlocking
@@ -502,7 +520,6 @@ object SpeechEngine {
       exo.setMediaItem(updated, position)
       exo.prepare()
       exo.playWhenReady = playWhenReady
-      // artwork load stamped separately
       if (epoch != queueEpoch || trackId != activeTrackOrNull()?.id) {
         return@runOnMainBlocking
       }
@@ -557,7 +574,7 @@ object SpeechEngine {
       if (!hasSource) {
         throw CodedException("no_source", "No media source loaded", null)
       }
-      val durationMs = exo.duration
+      val durationMs = resolveDurationMsLocked(exo)
       val targetMs =
         if (durationMs > 0) {
           (positionSeconds * 1000.0).toLong().coerceIn(0L, durationMs)
@@ -584,11 +601,7 @@ object SpeechEngine {
         "duration" to 0.0,
         "buffered" to 0.0
       )
-      mapOf(
-        "position" to msToSeconds(exo.currentPosition),
-        "duration" to if (exo.duration > 0) msToSeconds(exo.duration) else 0.0,
-        "buffered" to msToSeconds(exo.bufferedPosition)
-      )
+      progressMapLocked(exo)
     }
   }
 
@@ -697,25 +710,133 @@ object SpeechEngine {
       track.album?.let { metaBuilder.setAlbumTitle(it) }
       track.artwork?.let { metaBuilder.setArtworkUri(Uri.parse(it)) }
     }
-    val item =
-      MediaItem.Builder()
-        .setMediaId(track.id)
-        .setUri(Uri.parse(track.url))
-        .setMediaMetadata(metaBuilder.build())
-        .build()
+    val metadata = metaBuilder.build()
     val position = if (preservePosition) exo.currentPosition else 0L
     val pwr = exo.playWhenReady
     advancingInternally = true
     try {
-      exo.setMediaItem(item, position)
+      if (track.isSilence) {
+        val durationMs =
+          track.durationMs
+            ?: throw CodedException("invalid_argument", "Silence track missing durationMs", null)
+        val source =
+          SilenceMediaSource.Factory()
+            .setDurationUs(durationMs * 1_000L)
+            .setTag(track.id)
+            .createMediaSource()
+        val mediaItem =
+          MediaItem.Builder()
+            .setMediaId(track.id)
+            .setUri(Uri.EMPTY)
+            .setMediaMetadata(metadata)
+            .build()
+        if (source.canUpdateMediaItem(mediaItem)) {
+          source.updateMediaItem(mediaItem)
+        }
+        exo.setMediaSource(source, position)
+      } else {
+        val item =
+          MediaItem.Builder()
+            .setMediaId(track.id)
+            .setUri(Uri.parse(track.url))
+            .setMediaMetadata(metadata)
+            .build()
+        exo.setMediaItem(item, position)
+      }
       exo.prepare()
       exo.playWhenReady = pwr
     } finally {
       advancingInternally = false
     }
-    if (autoUpdateMetadata && !track.artwork.isNullOrBlank()) {
+    if (autoUpdateMetadata && !track.isSilence && !track.artwork.isNullOrBlank()) {
       loadArtworkAsync(track.artwork!!, track.id)
     }
+  }
+
+  private fun parseQueueTrack(raw: Map<String, Any?>): QueueTrack {
+    val url = raw["url"] as? String
+    if (url.isNullOrBlank()) {
+      throw CodedException("invalid_argument", "Track url must not be empty", null)
+    }
+    val id = (raw["id"] as? String)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+    val type = raw["type"] as? String
+    val silenceMatch = silenceUrlRegex.matchEntire(url.trim())
+    val isSilence = type == "silence" || silenceMatch != null
+
+    if (isSilence) {
+      if (type != null && type != "silence") {
+        throw CodedException("invalid_argument", "Silence url requires type silence", null)
+      }
+      if (type == "silence" && silenceMatch == null) {
+        throw CodedException(
+          "invalid_argument",
+          "type silence requires url silence:<ms>",
+          null,
+        )
+      }
+      if (type == null && silenceMatch != null) {
+        throw CodedException(
+          "invalid_argument",
+          "Silence url requires type silence",
+          null,
+        )
+      }
+      val fromUrl = silenceMatch!!.groupValues[1].toLong()
+      val fromField = (raw["durationMs"] as? Number)?.toLong()
+      val durationMs = fromField ?: fromUrl
+      if (fromField != null && fromField != fromUrl) {
+        throw CodedException(
+          "invalid_argument",
+          "Silence durationMs does not match url",
+          null,
+        )
+      }
+      if (durationMs <= 0L || durationMs > MAX_SILENCE_DURATION_MS) {
+        throw CodedException(
+          "invalid_argument",
+          "durationMs must be an integer in (0, $MAX_SILENCE_DURATION_MS]",
+          null,
+        )
+      }
+      return QueueTrack(
+        id = id,
+        url = "silence:$durationMs",
+        title = raw["title"] as? String,
+        artist = raw["artist"] as? String,
+        album = raw["album"] as? String,
+        artwork = raw["artwork"] as? String,
+        type = "silence",
+        durationMs = durationMs,
+      )
+    }
+
+    return QueueTrack(
+      id = id,
+      url = url,
+      title = raw["title"] as? String,
+      artist = raw["artist"] as? String,
+      album = raw["album"] as? String,
+      artwork = raw["artwork"] as? String,
+      type = type,
+      durationMs = null,
+    )
+  }
+
+  private fun resolveDurationMsLocked(exo: ExoPlayer): Long {
+    if (exo.duration > 0) {
+      return exo.duration
+    }
+    val silenceMs = activeTrackOrNull()?.takeIf { it.isSilence }?.durationMs
+    return silenceMs ?: 0L
+  }
+
+  private fun progressMapLocked(exo: ExoPlayer): Map<String, Double> {
+    val durationMs = resolveDurationMsLocked(exo)
+    return mapOf(
+      "position" to msToSeconds(exo.currentPosition),
+      "duration" to if (durationMs > 0) msToSeconds(durationMs) else 0.0,
+      "buffered" to msToSeconds(exo.bufferedPosition),
+    )
   }
 
   private fun handleTrackEndedLocked() {
@@ -754,15 +875,23 @@ object SpeechEngine {
     refreshProgressTimerLocked()
   }
 
-  private fun trackToBundle(track: QueueTrack): Bundle =
-    bundleOf(
-      "id" to track.id,
-      "url" to track.url,
-      "title" to track.title,
-      "artist" to track.artist,
-      "album" to track.album,
-      "artwork" to track.artwork,
-    )
+  private fun trackToBundle(track: QueueTrack): Bundle {
+    val map = LinkedHashMap<String, Any?>()
+    map["id"] = track.id
+    map["url"] = track.url
+    map["title"] = track.title
+    map["artist"] = track.artist
+    map["album"] = track.album
+    map["artwork"] = track.artwork
+    if (track.type != null) {
+      map["type"] = track.type
+    }
+    if (track.durationMs != null) {
+      map["durationMs"] = track.durationMs
+      map["duration"] = track.durationMs / 1000.0
+    }
+    return bundleOf(*map.map { it.key to it.value }.toTypedArray())
+  }
 
   private fun clearPlayerLocked() {
     val exo = player ?: return
@@ -885,11 +1014,7 @@ object SpeechEngine {
 
   private fun getProgressUnlocked(): Map<String, Double> {
     val exo = player ?: return mapOf("position" to 0.0, "duration" to 0.0, "buffered" to 0.0)
-    return mapOf(
-      "position" to msToSeconds(exo.currentPosition),
-      "duration" to if (exo.duration > 0) msToSeconds(exo.duration) else 0.0,
-      "buffered" to msToSeconds(exo.bufferedPosition),
-    )
+    return progressMapLocked(exo)
   }
 
   private fun stopProgressTimerLocked() {
@@ -916,6 +1041,10 @@ object SpeechEngine {
               return@post
             }
             if (trackId != null && activeTrackOrNull()?.id != trackId) {
+              return@post
+            }
+            // Never setMediaItem while silence is active (would tear down SilenceMediaSource).
+            if (activeTrackOrNull()?.isSilence == true) {
               return@post
             }
             val exo = player ?: return@post
@@ -947,7 +1076,7 @@ object SpeechEngine {
 
   private fun flushPendingSeek(exo: ExoPlayer) {
     val pending = pendingSeekSeconds ?: return
-    val durationMs = exo.duration
+    val durationMs = resolveDurationMsLocked(exo)
     if (durationMs <= 0) {
       return
     }

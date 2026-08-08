@@ -1,5 +1,5 @@
 /**
- * Contract tests — planned Bible surface + implemented T3–T6 exports.
+ * Contract tests — planned Bible surface + implemented T3–T7 exports.
  */
 
 const PLANNED_PUBLIC_SURFACE = [
@@ -27,6 +27,7 @@ const PLANNED_PUBLIC_SURFACE = [
   'updateMetadataForTrack',
   'addEventListener',
   'createSilenceTrack',
+  'isSilenceTrack',
   'ambientSetPlaylist',
   'ambientPlay',
   'ambientPause',
@@ -76,6 +77,8 @@ const IMPLEMENTED_T6 = [
   'PLAYBACK_EVENT_NAMES',
   'ALL_EVENT_NAMES',
 ];
+
+const IMPLEMENTED_T7 = ['createSilenceTrack', 'isSilenceTrack', 'MAX_SILENCE_DURATION_MS'];
 
 jest.mock('../DailyReactNativePlayerModule', () => ({
   __esModule: true,
@@ -161,5 +164,18 @@ describe('daily-react-native-player contract', () => {
     expect(api.Event.PlaybackState).toBe('playback-state');
     expect(api.Event.PlaybackProgressUpdated).toBe('playback-progress-updated');
     expect(api.DEFAULT_PLAYER_OPTIONS.progressUpdateEventInterval).toBe(1);
+  });
+
+  it('exports implemented T7 API', () => {
+    const api = require('../index');
+    for (const name of IMPLEMENTED_T7) {
+      expect(api[name]).toBeDefined();
+    }
+    expect(typeof api.createSilenceTrack).toBe('function');
+    expect(typeof api.isSilenceTrack).toBe('function');
+    const gap = api.createSilenceTrack({ durationMs: 800 });
+    expect(gap).toEqual({ type: 'silence', url: 'silence:800', duration: 0.8 });
+    expect(api.isSilenceTrack(gap)).toBe(true);
+    expect(api.isSilenceTrack({ url: 'https://example.com/a.mp3' })).toBe(false);
   });
 });

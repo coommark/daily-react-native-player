@@ -53,4 +53,10 @@ describe('normalizeTrackUrl', () => {
       expect.objectContaining({ code: PlayerErrorCode.UnsupportedUrl })
     );
   });
+
+  it('rejects silence scheme on progressive path', () => {
+    expect(() => normalizeTrackUrl('silence:800')).toThrow(
+      expect.objectContaining({ code: PlayerErrorCode.UnsupportedUrl })
+    );
+  });
 });

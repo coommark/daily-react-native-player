@@ -199,7 +199,9 @@ Emulator audio fidelity is non-authoritative for P0 background QA. See the devic
 ## Next
 
 1. Complete T4/T5 physical device QA (remotes → JS while backgrounded)
-2. Native silence tracks (T7)
-3. Progressive mutation + `setRate` (T8)
+2. Progressive mutation + `setRate` (T8)
+3. HLS + seek-after-ready (T9)
+
+Silence tracks (T7) are implemented — see [`silence-tracks.md`](./silence-tracks.md).
 
 See [`ROADMAP.md`](../ROADMAP.md).

@@ -19,4 +19,4 @@ Ambient background music under speech is **optional for consumers** (lazy init �
 2. `ambientSetPlaylist(urls, loopAll)`
 3. `ambientSetVolume(0)` → `ambientPlay()` → `ambientFade(target, ms)`
 
-Silence gaps between ambient tracks use core silence helpers when loop-all is enabled.
+Silence gaps between ambient tracks reuse core [`createSilenceTrack`](./silence-tracks.md) when loop-all is enabled (T10).

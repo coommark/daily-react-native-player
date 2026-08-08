@@ -8,7 +8,7 @@ Primary host: [Daily Bible - Offline & Audio](https://dailybiblenow.com)
 
 **Peers:** Expo SDK 57+ (Expo Modules Core required), React Native 0.86+, New Architecture only. Web transport is unsupported. Hosts on Expo &lt;57 must upgrade the app before adopting this package.
 
-## Implemented (T3 + T4 + T5 + T6)
+## Implemented (T3 + T4 + T5 + T6 + T7)
 
 ```ts
 import {
@@ -33,6 +33,8 @@ import {
   setPlayWhenReady,
   reset,
   getPlayerOptions,
+  createSilenceTrack,
+  isSilenceTrack,
   registerPlaybackService,
   addEventListener,
   Event,
@@ -44,6 +46,18 @@ import {
   PlayerException,
 } from 'daily-react-native-player';
 ```
+
+### Silence (T7)
+
+| Export | Behavior |
+| --- | --- |
+| `createSilenceTrack({ durationMs, id? })` | Sync helper → canonical `{ type: 'silence', url: 'silence:<ms>', duration }` |
+| `isSilenceTrack(track)` | `track?.type === 'silence'` — use for host rate / skip policy |
+| `CreateSilenceTrackOptions` | Type for the helper options |
+| `Track.type: 'silence'` | First-class queue item; `duration` in seconds |
+| `durationMs` bounds | Integer in `(0, 300000]` |
+
+Uses (verse gaps, why not timers, native ownership): [`silence-tracks.md`](./silence-tracks.md). Queue insert example: [`queue.md`](./queue.md).
 
 ### Bootstrap (required for remotes)
 
@@ -169,7 +183,8 @@ type Track = {
   artist?: string;
   album?: string;
   artwork?: string;
-  type?: 'default' | 'hls'; // HLS rejected until T9
+  type?: 'default' | 'hls' | 'silence'; // HLS rejected until T9; silence = T7
+  duration?: number; // seconds; authoritative for silence
 };
 ```
 
@@ -194,4 +209,4 @@ Call `setupPlayer()` before transport (`reset` is the exception). New Architectu
 
 ## Not yet implemented
 
-Silence (T7), rate / mutation stress (T8), HLS (T9), ambient (T10) — see [`bible-acceptance.md`](./bible-acceptance.md) and [`ROADMAP.md`](../ROADMAP.md).
+Rate / mutation stress (T8), HLS (T9), ambient (T10) — see [`bible-acceptance.md`](./bible-acceptance.md) and [`ROADMAP.md`](../ROADMAP.md).

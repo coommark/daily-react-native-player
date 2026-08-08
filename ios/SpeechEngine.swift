@@ -15,9 +15,20 @@ final class SpeechEngine {
     var artist: String?
     var album: String?
     var artwork: String?
+    let type: String?
+    let durationMs: Int?
+
+    var isSilence: Bool {
+      type == "silence" || (durationMs != nil && url.hasPrefix("silence:"))
+    }
+
+    func takeSilenceDurationSeconds() -> Double? {
+      guard isSilence, let durationMs else { return nil }
+      return Double(durationMs) / 1000.0
+    }
 
     func toDictionary() -> [String: Any?] {
-      [
+      var dict: [String: Any?] = [
         "id": id,
         "url": url,
         "title": title,
@@ -25,6 +36,14 @@ final class SpeechEngine {
         "album": album,
         "artwork": artwork,
       ]
+      if let type {
+        dict["type"] = type
+      }
+      if let durationMs {
+        dict["durationMs"] = durationMs
+        dict["duration"] = Double(durationMs) / 1000.0
+      }
+      return dict
     }
   }
 
@@ -37,6 +56,8 @@ final class SpeechEngine {
   private var endObserver: NSObjectProtocol?
   private var statusObservation: NSKeyValueObservation?
   private var playWhenReadyFlag = false
+  /// Intended output level; item swaps mute briefly to avoid format-change crackle.
+  private var outputVolume: Float = 1.0
   private var killBehavior = "continue-playback"
   private var fgsProxyActive = false
   private var autoUpdateMetadata = true
@@ -113,28 +134,12 @@ final class SpeechEngine {
     let wasEmpty = queue.isEmpty
     var entries: [QueueTrack] = []
     for raw in tracks {
-      guard let url = raw["url"] as? String, !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        throw Exception(name: "invalid_argument", description: "Track url must not be empty", code: "invalid_argument")
+      let entry = try parseQueueTrack(raw)
+      if entry.isSilence, let durationMs = entry.durationMs {
+        // Ensure-at-add so activate is usually a cache hit (IO on serial queue).
+        _ = try SilenceWavCache.ensure(durationMs: durationMs)
       }
-      if let scheme = URL(string: url)?.scheme?.lowercased(), scheme == "content" {
-        throw Exception(name: "unsupported_url", description: "content:// urls are Android-only", code: "unsupported_url")
-      }
-      let id: String
-      if let provided = raw["id"] as? String, !provided.isEmpty {
-        id = provided
-      } else {
-        id = UUID().uuidString
-      }
-      entries.append(
-        QueueTrack(
-          id: id,
-          url: url,
-          title: raw["title"] as? String,
-          artist: raw["artist"] as? String,
-          album: raw["album"] as? String,
-          artwork: raw["artwork"] as? String
-        )
-      )
+      entries.append(entry)
     }
     queueEpoch += 1
     lastErrorCode = nil
@@ -308,13 +313,24 @@ final class SpeechEngine {
       pendingSeekSeconds = positionSeconds
       return
     }
+    let fallbackDuration = activeTrackOrNil()?.takeSilenceDurationSeconds()
     if item.status != .readyToPlay || !item.duration.isNumeric {
+      if let fallbackDuration, fallbackDuration > 0 {
+        let clamped = min(max(0, positionSeconds), fallbackDuration)
+        pendingSeekSeconds = nil
+        let time = CMTime(seconds: clamped, preferredTimescale: 600)
+        player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        NowPlayingController.shared.syncFromEngine()
+        return
+      }
       pendingSeekSeconds = positionSeconds
       return
     }
     let duration = CMTimeGetSeconds(item.duration)
-    let clamped = duration.isFinite && duration > 0
-      ? min(max(0, positionSeconds), duration)
+    let effectiveDuration =
+      (duration.isFinite && duration > 0) ? duration : (fallbackDuration ?? 0)
+    let clamped = effectiveDuration > 0
+      ? min(max(0, positionSeconds), effectiveDuration)
       : positionSeconds
     pendingSeekSeconds = nil
     let time = CMTime(seconds: clamped, preferredTimescale: 600)
@@ -327,9 +343,12 @@ final class SpeechEngine {
       return ["position": 0, "duration": 0, "buffered": 0]
     }
     let position = max(0, CMTimeGetSeconds(player.currentTime())).finiteOrZero
-    let duration = item.duration.isNumeric
+    var duration = item.duration.isNumeric
       ? max(0, CMTimeGetSeconds(item.duration)).finiteOrZero
       : 0
+    if duration <= 0, let silence = activeTrackOrNil()?.takeSilenceDurationSeconds() {
+      duration = silence
+    }
     let buffered: Double
     if let range = item.loadedTimeRanges.last?.timeRangeValue {
       buffered = max(0, CMTimeGetSeconds(CMTimeRangeGetEnd(range))).finiteOrZero
@@ -423,15 +442,40 @@ final class SpeechEngine {
   ) throws {
     guard index >= 0, index < queue.count else { return }
     let track = queue[index]
-    guard let url = URL(string: track.url) else {
-      throw Exception(name: "unsupported_url", description: "Invalid media url", code: "unsupported_url")
+    let mediaURL: URL
+    if track.isSilence {
+      guard let durationMs = track.durationMs else {
+        throw Exception(name: "invalid_argument", description: "Silence track missing durationMs", code: "invalid_argument")
+      }
+      do {
+        mediaURL = try SilenceWavCache.ensure(durationMs: durationMs)
+      } catch {
+        throw Exception(
+          name: "load_failed",
+          description: "Failed to materialize silence WAV: \(error.localizedDescription)",
+          code: "load_failed"
+        )
+      }
+    } else {
+      guard let url = URL(string: track.url) else {
+        throw Exception(name: "unsupported_url", description: "Invalid media url", code: "unsupported_url")
+      }
+      mediaURL = url
     }
     let resolvedLastIndex = lastIndex ?? (activeIndex >= 0 ? activeIndex : nil)
     let resolvedLastTrack = lastTrack ?? activeTrackOrNil()
     tearDownItemObservers()
     lastErrorCode = nil
     activeIndex = index
-    let item = AVPlayerItem(url: url)
+    // Mute across replaceCurrentItem — abrupt 48k/44.1k stereo → 22.05k mono (silence)
+    // (or the reverse) otherwise produces a CD-scratch / click on many devices.
+    if let player {
+      if player.volume > 0 {
+        outputVolume = player.volume
+      }
+      player.volume = 0
+    }
+    let item = AVPlayerItem(url: mediaURL)
     playerItem = item
     player?.replaceCurrentItem(with: item)
     hasSource = true
@@ -447,6 +491,82 @@ final class SpeechEngine {
     }
     emitStateIfChanged()
     refreshProgressObserver()
+  }
+
+  private func parseQueueTrack(_ raw: [String: Any]) throws -> QueueTrack {
+    guard let url = raw["url"] as? String, !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw Exception(name: "invalid_argument", description: "Track url must not be empty", code: "invalid_argument")
+    }
+    if let scheme = URL(string: url)?.scheme?.lowercased(), scheme == "content" {
+      throw Exception(name: "unsupported_url", description: "content:// urls are Android-only", code: "unsupported_url")
+    }
+    let id: String
+    if let provided = raw["id"] as? String, !provided.isEmpty {
+      id = provided
+    } else {
+      id = UUID().uuidString
+    }
+    let type = raw["type"] as? String
+    let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+    let silencePrefix = "silence:"
+    let isSilenceUrl = trimmed.hasPrefix(silencePrefix)
+    let isSilence = type == "silence" || isSilenceUrl
+
+    if isSilence {
+      if type != nil && type != "silence" {
+        throw Exception(name: "invalid_argument", description: "Silence url requires type silence", code: "invalid_argument")
+      }
+      if type == "silence" && !isSilenceUrl {
+        throw Exception(name: "invalid_argument", description: "type silence requires url silence:<ms>", code: "invalid_argument")
+      }
+      if type == nil && isSilenceUrl {
+        throw Exception(name: "invalid_argument", description: "Silence url requires type silence", code: "invalid_argument")
+      }
+      let msString = String(trimmed.dropFirst(silencePrefix.count))
+      guard let fromUrl = Int(msString) else {
+        throw Exception(name: "invalid_argument", description: "Invalid silence url", code: "invalid_argument")
+      }
+      let fromField: Int?
+      if let n = raw["durationMs"] as? Int {
+        fromField = n
+      } else if let n = raw["durationMs"] as? Double {
+        fromField = Int(n)
+      } else {
+        fromField = nil
+      }
+      let durationMs = fromField ?? fromUrl
+      if let fromField, fromField != fromUrl {
+        throw Exception(name: "invalid_argument", description: "Silence durationMs does not match url", code: "invalid_argument")
+      }
+      guard durationMs > 0, durationMs <= SilenceWavCache.maxDurationMs else {
+        throw Exception(
+          name: "invalid_argument",
+          description: "durationMs must be an integer in (0, \(SilenceWavCache.maxDurationMs)]",
+          code: "invalid_argument"
+        )
+      }
+      return QueueTrack(
+        id: id,
+        url: "silence:\(durationMs)",
+        title: raw["title"] as? String,
+        artist: raw["artist"] as? String,
+        album: raw["album"] as? String,
+        artwork: raw["artwork"] as? String,
+        type: "silence",
+        durationMs: durationMs
+      )
+    }
+
+    return QueueTrack(
+      id: id,
+      url: url,
+      title: raw["title"] as? String,
+      artist: raw["artist"] as? String,
+      album: raw["album"] as? String,
+      artwork: raw["artwork"] as? String,
+      type: type,
+      durationMs: nil
+    )
   }
 
   private func clearPlayer() {
@@ -629,9 +749,16 @@ final class SpeechEngine {
         switch observed.status {
         case .readyToPlay:
           self.flushPendingSeek()
+          // Restore level after decoder is primed (avoids format-switch crackle).
+          if let player = self.player, player.volume == 0 {
+            player.volume = self.outputVolume
+          }
           NowPlayingController.shared.syncFromEngine()
           self.emitStateIfChanged()
         case .failed:
+          if let player = self.player, player.volume == 0 {
+            player.volume = self.outputVolume
+          }
           self.lastErrorCode = "load_failed"
           self.emitPlaybackError(code: "load_failed", message: observed.error?.localizedDescription ?? "load_failed")
           self.emitStateIfChanged(force: "error")
@@ -659,13 +786,21 @@ final class SpeechEngine {
   }
 
   private func flushPendingSeek() {
-    guard let pending = pendingSeekSeconds, let item = playerItem, item.duration.isNumeric else {
+    guard let pending = pendingSeekSeconds, let item = playerItem else {
       return
     }
-    let duration = CMTimeGetSeconds(item.duration)
-    let clamped = duration.isFinite && duration > 0
-      ? min(max(0, pending), duration)
-      : pending
+    let fallback = activeTrackOrNil()?.takeSilenceDurationSeconds()
+    let duration: Double
+    if item.duration.isNumeric {
+      let d = CMTimeGetSeconds(item.duration)
+      duration = (d.isFinite && d > 0) ? d : (fallback ?? 0)
+    } else {
+      duration = fallback ?? 0
+    }
+    guard duration > 0 || item.duration.isNumeric else {
+      return
+    }
+    let clamped = duration > 0 ? min(max(0, pending), duration) : pending
     pendingSeekSeconds = nil
     let time = CMTime(seconds: clamped, preferredTimescale: 600)
     player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)

@@ -28,7 +28,7 @@ example app → JS Player / Silence / Ambient(opt) → Expo Module
 | 3 | `MediaSessionService` + `MediaSession` (not MediaLibrary) |
 | 4 | Unique MediaSession id per process; no leaky bootstrap player |
 | 5 | Remotes → JS via `registerPlaybackService` (Android headless task) |
-| 6 | Silence = first-class queue items; native-owned sources |
+| 6 | Silence = first-class queue items; native-owned sources (`silence:<ms>` wire; Android `SilenceMediaSource` + `mediaId=track.id`; iOS cached PCM WAV). Bind helper never decodes `silence:` as a media URI. See [`silence-tracks.md`](./silence-tracks.md). |
 | 7 | Ambient consumer-opt-in + lazy; required for Bible-ready 0.1.0 |
 | 8 | P0 background / metadata gates v0.1 device QA |
 | 9 | Progressive WAV/mp3/m4a (+ platform codecs) from T3; HLS streaming only (no DASH/SS) in v0.1 |
@@ -71,7 +71,7 @@ Full metadata list natively; materialize/prepare only active ± 1–2 items. Bat
 
 ## Layers
 
-- **JS:** imperative Player API (named exports), silence helpers (T7), optional ambient facade (T10)
+- **JS:** imperative Player API (named exports), silence helpers (`createSilenceTrack` / `isSilenceTrack`), optional ambient facade (T10)
 - **Config plugin (T2):** plugin-owned iOS `UIBackgroundModes: audio` + Android FGS permissions + `PlaybackService` declaration in the *app* manifest (`createRunOncePlugin`, `enableBackgroundPlayback` escape hatch). Library AAR owns the Kotlin `PlaybackService` class and pinned Media3 deps; library manifest stays free of FGS/service.
 - **Native (T3 + T4 + T6):** process-scoped `SpeechEngine` owns the speech player (Android ExoPlayer Media3 **1.8.0**, iOS AVPlayer). Queue metadata list is authoritative; player holds the active item (prepare window). Mutations are serialized (Android player looper / main; iOS main via AsyncFunction). `reset()` clears the full queue + now-playing display only. Dual players are forbidden. T4 attaches a unique-id `MediaSession` (Android) and `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` (iOS) to that same player.
 - **Audio policy (T3):** Android `USAGE_MEDIA` + `CONTENT_TYPE_SPEECH`; iOS `AVAudioSession` category `.playback`, mode `.spokenAudio`, Bluetooth/AirPlay options. Mix modes = T10. Android audio focus owned by `SpeechEngine` (emit `remote-duck`); JS remote events = T5.

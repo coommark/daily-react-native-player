@@ -57,6 +57,23 @@ await skipToNext(); // or from RemoteNext in registerPlaybackService
 Replace the whole list: `await reset(); await add(tracks);`  
 (`add` **appends** — it does not replace.)
 
+## Inserting silence gaps
+
+Exact-duration pauses are normal queue rows (not timers). See [`silence-tracks.md`](./silence-tracks.md).
+
+```ts
+import { add, createSilenceTrack, isSilenceTrack, play } from 'daily-react-native-player';
+
+await add([
+  { url: 'https://cdn.example.com/verse-1.wav', title: 'Genesis 1:1' },
+  createSilenceTrack({ durationMs: 500 }),
+  { url: 'https://cdn.example.com/verse-2.wav', title: 'Genesis 1:2' },
+]);
+await play();
+
+// Host policy: detect silence for setRate(1) when speech rate < 1 (T8)
+```
+
 ## API map
 
 | Need | API |

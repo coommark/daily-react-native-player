@@ -66,8 +66,10 @@ Speech **playlist** used for chapter / verse sequences — see [`queue.md`](./qu
 
 ## Silence (core)
 
-- [ ] `createSilenceTrack` / equivalent queueable silence items
-- [ ] Exact duration; usable between speech and ambient items
+- [x] `createSilenceTrack` / `isSilenceTrack` queueable silence items (T7)
+- [x] Exact duration; usable between speech items (ambient gaps reuse the same helper in T10)
+
+See [`silence-tracks.md`](./silence-tracks.md) for product uses.
 
 ## Ambient (opt-in; required for Bible-ready)
 

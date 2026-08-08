@@ -4,6 +4,7 @@ import {
   Event,
   add,
   addEventListener,
+  createSilenceTrack,
   getActiveTrack,
   getActiveTrackIndex,
   getPlaybackState,
@@ -243,6 +244,38 @@ export default function App() {
                 })
               }>
               <Text style={styles.btnLabel}>Load multi-track queue (3)</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.btn,
+                styles.btnSecondary,
+                pressed && styles.btnPressed,
+              ]}
+              onPress={() =>
+                run(async () => {
+                  await reset();
+                  await add([
+                    {
+                      url: requireAssetUri(localWav, 'WAV'),
+                      title: 'Hymn',
+                      artist: 'Daily Bible',
+                      album: 'Example',
+                    },
+                    {
+                      ...createSilenceTrack({ durationMs: 5000, id: 'gap-5s' }),
+                      title: 'Silence (5s)',
+                    },
+                    {
+                      url: requireAssetUri(localMp3, 'MP3'),
+                      title: 'Instrumentals',
+                      artist: 'Daily Bible',
+                      album: 'Example',
+                    },
+                  ]);
+                  await play();
+                })
+              }>
+              <Text style={styles.btnLabel}>Load speech + silence gap</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [

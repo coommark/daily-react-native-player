@@ -100,11 +100,25 @@ Deep dive: [`docs/queue.md`](./docs/queue.md) · API: [`docs/api.md`](./docs/api
 
 ### Silence tracks (core, not a hack)
 
+**Why:** exact-duration gaps as real queue items (skip, progress, remotes, `isSilenceTrack`) instead of fragile timers.  
+**When:** between speech items (verse/chapter pauses); later ambient loop-all gaps (T10).
+
 ```ts
-createSilenceTrack({ durationMs: 800 })
+import { add, createSilenceTrack, isSilenceTrack, play } from 'daily-react-native-player';
+
+await add([
+  { url: speechA, title: 'Verse 1' },
+  createSilenceTrack({ durationMs: 800 }),
+  { url: speechB, title: 'Verse 2' },
+]);
+await play();
+
+// Host rate policy (T8): often force rate 1 while isSilenceTrack(active)
 ```
 
-Native-owned exact-duration gaps — Android `SilenceMediaSource`, iOS cached PCM WAV — so verse pauses and ambient loop gaps behave like real queue items (skip, rate, metadata) instead of fragile timers.
+Native-owned — Android `SilenceMediaSource`, iOS cached PCM WAV (22050 Hz mono 16-bit). No host filesystem dependency.
+
+Deep dive: [`docs/silence-tracks.md`](./docs/silence-tracks.md)
 
 ### Ambient dual-audio (opt-in)
 
@@ -120,7 +134,7 @@ Bed music under speech without crackle, without stealing audio focus, without hi
 
 ## Status
 
-**Lock-screen / notification / Bluetooth remotes (T4–T5) and speech playlist + Playback\* events (T6) are in the package.** Remotes are emit-only to JS; the example wires Play/Pause/Next/Prev. **Physical device QA** is still required before calling the full P0 background matrix “done.”
+**Lock-screen / notification / Bluetooth remotes (T4–T5), speech playlist + Playback\* events (T6), and native silence tracks (T7) are in the package.** Remotes are emit-only to JS; the example wires Play/Pause/Next/Prev. **Physical device QA** is still required before calling the full P0 background matrix “done.”
 
 | Area | Status |
 | --- | --- |
@@ -130,7 +144,7 @@ Bed music under speech without crackle, without stealing audio focus, without hi
 | **Lock screen / notification / Now Playing session** | **Code complete (T4)** — device QA pending |
 | **`registerPlaybackService` + Remote\* → JS (headsets & lock screen)** | **Done (T5)** — device QA pending |
 | **Multi-track playlist + Playback\* events** | **Done (T6)** |
-| Silence tracks | Planned (core / T7) |
+| **Silence tracks** | **Done (T7)** |
 | HLS | Planned (T9; seek-after-ready) |
 | Ambient dual-audio | Planned (opt-in; required for Bible-ready 0.1.0) |
 

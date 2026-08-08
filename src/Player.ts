@@ -9,7 +9,8 @@ import {
   type PlayerOptions,
   type PlayerOptionsInput,
 } from './Options';
-import type { Progress, Track } from './Track';
+import type { Progress, Track, TrackType } from './Track';
+import { canonicalizeSilence } from './createSilenceTrack';
 import { PlayerErrorCode, PlayerException } from './errors';
 import { normalizeTrackUrl } from './normalizeTrackUrl';
 
@@ -57,6 +58,24 @@ function assertNewArchitecture(): void {
   }
 }
 
+function applyMetadataToPayload(track: Track, payload: Record<string, unknown>): void {
+  if (!persistedOptions.autoUpdateMetadata) {
+    return;
+  }
+  if (typeof track.title === 'string' && track.title.length > 0) payload.title = track.title;
+  if (typeof track.artist === 'string' && track.artist.length > 0) payload.artist = track.artist;
+  if (typeof track.album === 'string' && track.album.length > 0) payload.album = track.album;
+  if (typeof track.artwork === 'string' && track.artwork.length > 0)
+    payload.artwork = track.artwork;
+}
+
+function isSilenceCandidate(track: Track): boolean {
+  return (
+    track.type === 'silence' ||
+    (typeof track.url === 'string' && track.url.trim().startsWith('silence:'))
+  );
+}
+
 function validateTrack(track: Track): { url: string; payload: Record<string, unknown> } {
   if (track.type === 'hls') {
     throw new PlayerException(
@@ -64,6 +83,20 @@ function validateTrack(track: Track): { url: string; payload: Record<string, unk
       'HLS is not supported until T9; use progressive urls'
     );
   }
+
+  if (isSilenceCandidate(track)) {
+    const silence = canonicalizeSilence(track);
+    const payload: Record<string, unknown> = {
+      type: 'silence',
+      url: silence.url,
+      durationMs: silence.durationMs,
+      duration: silence.duration,
+    };
+    if (silence.id) payload.id = silence.id;
+    applyMetadataToPayload(track, payload);
+    return { url: silence.url, payload };
+  }
+
   const url = normalizeTrackUrl(track.url);
   if (url.toLowerCase().startsWith('content:') && Platform.OS === 'ios') {
     throw new PlayerException(PlayerErrorCode.UnsupportedUrl, 'content:// urls are Android-only');
@@ -72,13 +105,7 @@ function validateTrack(track: Track): { url: string; payload: Record<string, unk
   if (typeof track.id === 'string' && track.id.length > 0) {
     payload.id = track.id;
   }
-  if (persistedOptions.autoUpdateMetadata) {
-    if (typeof track.title === 'string' && track.title.length > 0) payload.title = track.title;
-    if (typeof track.artist === 'string' && track.artist.length > 0) payload.artist = track.artist;
-    if (typeof track.album === 'string' && track.album.length > 0) payload.album = track.album;
-    if (typeof track.artwork === 'string' && track.artwork.length > 0)
-      payload.artwork = track.artwork;
-  }
+  applyMetadataToPayload(track, payload);
   return { url, payload };
 }
 
@@ -98,6 +125,29 @@ function normalizeTrackFromNative(
   if (typeof raw.artist === 'string') track.artist = raw.artist;
   if (typeof raw.album === 'string') track.album = raw.album;
   if (typeof raw.artwork === 'string') track.artwork = raw.artwork;
+
+  const rawType = raw.type;
+  if (rawType === 'silence' || rawType === 'hls' || rawType === 'default') {
+    track.type = rawType as TrackType;
+  }
+
+  if (typeof raw.durationMs === 'number' && Number.isFinite(raw.durationMs) && raw.durationMs > 0) {
+    track.duration = raw.durationMs / 1000;
+  } else if (
+    typeof raw.duration === 'number' &&
+    Number.isFinite(raw.duration) &&
+    raw.duration > 0
+  ) {
+    track.duration = raw.duration;
+  }
+
+  if (track.type === 'silence' && track.duration == null) {
+    const m = /^silence:(\d+)$/.exec(url);
+    if (m) {
+      track.duration = Number(m[1]) / 1000;
+    }
+  }
+
   return track;
 }
 

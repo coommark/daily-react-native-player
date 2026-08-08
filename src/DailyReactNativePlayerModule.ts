@@ -23,6 +23,9 @@ type TrackPayload = {
   artist?: string;
   album?: string;
   artwork?: string;
+  type?: string;
+  duration?: number;
+  durationMs?: number;
 };
 
 type MetadataPayload = {

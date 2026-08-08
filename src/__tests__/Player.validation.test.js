@@ -45,6 +45,7 @@ const {
   getQueue,
   __resetPlayerJsStateForTests,
 } = require('../Player');
+const { createSilenceTrack } = require('../createSilenceTrack');
 const { PlayerErrorCode } = require('../errors');
 
 describe('Player validation', () => {
@@ -187,5 +188,55 @@ describe('Player validation', () => {
     ]);
     const q = await getQueue();
     expect(q).toEqual([{ id: '1', url: 'https://example.com/a.mp3', title: 'A' }]);
+  });
+
+  it('forwards createSilenceTrack payload to native', async () => {
+    await add(createSilenceTrack({ durationMs: 1000, id: 'gap' }));
+    expect(NativeModule.add).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          type: 'silence',
+          url: 'silence:1000',
+          durationMs: 1000,
+          duration: 1,
+          id: 'gap',
+        }),
+      ],
+      null
+    );
+  });
+
+  it('accepts already-canonical silence track', async () => {
+    await add({ type: 'silence', url: 'silence:800', duration: 0.8 });
+    expect(NativeModule.add).toHaveBeenCalledWith(
+      [expect.objectContaining({ type: 'silence', url: 'silence:800', durationMs: 800 })],
+      null
+    );
+  });
+
+  it('rejects type silence with progressive url', async () => {
+    await expect(add({ type: 'silence', url: 'https://example.com/a.wav' })).rejects.toEqual(
+      expect.objectContaining({ code: PlayerErrorCode.InvalidArgument })
+    );
+  });
+
+  it('rejects silence url without silence type', async () => {
+    await expect(add({ url: 'silence:800' })).rejects.toEqual(
+      expect.objectContaining({ code: PlayerErrorCode.InvalidArgument })
+    );
+  });
+
+  it('rejects mismatched silence duration vs url', async () => {
+    await expect(add({ type: 'silence', url: 'silence:800', duration: 1 })).rejects.toEqual(
+      expect.objectContaining({ code: PlayerErrorCode.InvalidArgument })
+    );
+  });
+
+  it('getQueue normalizes silence tracks from native', async () => {
+    NativeModule.getQueue.mockResolvedValue([
+      { id: 's1', type: 'silence', url: 'silence:500', durationMs: 500 },
+    ]);
+    const q = await getQueue();
+    expect(q).toEqual([{ id: 's1', type: 'silence', url: 'silence:500', duration: 0.5 }]);
   });
 });
