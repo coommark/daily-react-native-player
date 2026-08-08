@@ -61,6 +61,7 @@ final class SpeechEngine {
   private var killBehavior = "continue-playback"
   private var fgsProxyActive = false
   private var autoUpdateMetadata = true
+  private var debugLogging = false
   private var progressUpdateEventInterval: Double = 1
   private var progressObserver: Any?
   private var queue: [QueueTrack] = []
@@ -109,6 +110,9 @@ final class SpeechEngine {
     }
     if let auto = options["autoUpdateMetadata"] as? Bool {
       autoUpdateMetadata = auto
+    }
+    if let debug = options["debug"] as? Bool {
+      debugLogging = debug
     }
     if let interval = options["progressUpdateEventInterval"] as? Double, interval >= 0 {
       progressUpdateEventInterval = interval
@@ -415,20 +419,22 @@ final class SpeechEngine {
 
   func reset() {
     guard initialized else { return }
+    debugLog("reset play-intent-first")
     tearDownItemObservers()
     removeProgressObserver()
+    // Clear play-intent first so late callbacks cannot revive audio mid-reset.
+    playWhenReadyFlag = false
+    player?.pause()
     let last = activeTrackOrNil()
     let lastIdx: Int? = activeIndex >= 0 ? activeIndex : nil
     queueEpoch += 1
     queue = []
     activeIndex = -1
-    player?.pause()
     player?.replaceCurrentItem(with: nil)
     playerItem = nil
     hasSource = false
     pendingSeekSeconds = nil
     lastErrorCode = nil
-    playWhenReadyFlag = false
     desiredRate = 1.0
     NowPlayingController.shared.clearDisplay()
     emitActiveTrackChanged(index: nil, track: nil, lastIndex: lastIdx, lastTrack: last)
@@ -781,6 +787,11 @@ final class SpeechEngine {
         code: "not_initialized"
       )
     }
+  }
+
+  private func debugLog(_ message: String) {
+    guard debugLogging else { return }
+    NSLog("[DailyPlayerSpeech] %@", message)
   }
 
   private func configureAudioSession() throws {

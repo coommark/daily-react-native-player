@@ -53,4 +53,13 @@ describe('mergePlayerOptions', () => {
     const map = optionsToNativeMap(merged);
     expect(map.androidAudioMixMode).toBe('duckOthers');
   });
+
+  it('merges debug flag', () => {
+    expect(DEFAULT_PLAYER_OPTIONS.debug).toBe(false);
+    const on = mergePlayerOptions(DEFAULT_PLAYER_OPTIONS, { debug: true });
+    expect(on.debug).toBe(true);
+    const ignored = mergePlayerOptions(DEFAULT_PLAYER_OPTIONS, { debug: 'yes' });
+    expect(ignored.debug).toBe(false);
+    expect(optionsToNativeMap(on).debug).toBe(true);
+  });
 });

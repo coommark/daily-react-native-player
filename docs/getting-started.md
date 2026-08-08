@@ -194,11 +194,13 @@ The example depends on `daily-react-native-player` via `file:..` (npm-consumer s
 
 Emulator audio fidelity is non-authoritative for P0 background QA. See the device matrix in [`background-playback.md`](./background-playback.md).
 
-**CI:** Build → typecheck (src + plugin) → lint → tests → plugin tests → pack:check. Android `assembleRelease` still requires local example prebuild.
+**CI:** Build → typecheck (src + plugin) → lint → tests → plugin tests → pack:check → example `assembleRelease` (R8).
+
+Host SLAs: [`contracts.md`](./contracts.md). Recommended Stop: `pause()` then `reset()`.
 
 ## Next
 
-1. Complete T4/T5 physical device QA (remotes → JS while backgrounded) — T11
-2. Docs polish + publishable 0.1.0 (T12)
+1. Complete **physical** T4/T5/T11 device QA matrices in [`background-playback.md`](./background-playback.md)
+2. Tag `v0.1.0` / publish when device QA is signed and requested
 
-Core MVP + ambient (T8–T10) are implemented. See [`ROADMAP.md`](../ROADMAP.md).
+Core MVP + ambient + hardening + packaging are implemented. See [`ROADMAP.md`](../ROADMAP.md).

@@ -4,6 +4,7 @@ import {
   getPlayWhenReady,
   pause,
   play,
+  reset,
   skipToNext,
   skipToPrevious,
 } from 'daily-react-native-player';
@@ -19,8 +20,12 @@ export async function playbackService(): Promise<void> {
   addEventListener(Event.RemotePause, () => {
     void safe('RemotePause', () => pause());
   });
+  // Recommended host Stop policy: clear play-intent then reset queue (see docs/contracts.md).
   addEventListener(Event.RemoteStop, () => {
-    void safe('RemoteStop', () => pause());
+    void safe('RemoteStop', async () => {
+      await pause();
+      await reset();
+    });
   });
   addEventListener(Event.RemotePlayPause, () => {
     void safe('RemotePlayPause', async () => {

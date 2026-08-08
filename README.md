@@ -182,7 +182,7 @@ API: [`docs/api.md`](./docs/api.md)
 
 ## Status
 
-**Lock-screen / notification / Bluetooth remotes (T4–T5), speech playlist + Playback\* events (T6), native silence tracks (T7), playback rate (T8), HLS (T9), and ambient dual-audio (T10) are in the package.** Remotes are emit-only to JS; the example wires Play/Pause/Next/Prev. **Physical device QA** is still required before calling the full P0 background matrix “done.”
+**Hardening (T11) is in the package:** setup coalesce + 10s timeout, FGS sync promotion, reset play-intent-first, contracts docs, pack hygiene, CI `assembleRelease`. **Physical device sign-off** on the P0 matrices in [`docs/background-playback.md`](./docs/background-playback.md) is still required before claiming Bible-ready 0.1.0 / marking T4+T11 fully done.
 
 | Area | Status |
 | --- | --- |
@@ -195,7 +195,8 @@ API: [`docs/api.md`](./docs/api.md)
 | **Silence tracks** | **Done (T7)** |
 | **Playback rate / progressive mutation** | **Done (T8)** |
 | **HLS + seek-after-ready** | **Done (T9)** |
-| **Ambient dual-audio** | **Done (T10)** — Bible-ready candidate; T11 device QA still required |
+| **Ambient dual-audio** | **Done (T10)** |
+| **Hardening + publish packaging (T11/T12)** | **Code/docs complete** — physical P0 QA pending |
 
 See [`ROADMAP.md`](./ROADMAP.md). Star the repo and watch releases if you want the first Bible-ready cut.
 
@@ -225,7 +226,7 @@ See [`ROADMAP.md`](./ROADMAP.md). Star the repo and watch releases if you want t
 
 ---
 
-## Install (when published)
+## Install
 
 ```bash
 npx expo install daily-react-native-player
@@ -293,6 +294,7 @@ The example includes **Load multi-track queue**, skip next/previous, and remotes
 ## Documentation
 
 - [Getting started](./docs/getting-started.md)
+- [**Runtime contracts / SLAs**](./docs/contracts.md)
 - [**Background playback & remotes (P0)**](./docs/background-playback.md) — lock screen, notification, Bluetooth, Now Playing, `registerPlaybackService`
 - [**Speech queue / playlist**](./docs/queue.md) — multi-track API, events, remotes → skip*
 - [Architecture](./docs/architecture.md) — ADRs (Expo Module, MediaSessionService, queue, silence, ambient)
@@ -301,6 +303,8 @@ The example includes **Load multi-track queue**, skip next/previous, and remotes
 - [Dual audio / ambient](./docs/dual-audio.md)
 - [Bible acceptance matrix](./docs/bible-acceptance.md)
 - [Contributing](./docs/contributing.md)
+- [Changelog](./CHANGELOG.md)
+- [Security](./SECURITY.md)
 
 ---
 

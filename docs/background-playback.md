@@ -121,38 +121,53 @@ registerPlaybackService(() => async () => {
 });
 ```
 
-Not `expo-background-task`. See [`api.md`](./api.md).
+Not `expo-background-task`. See [`api.md`](./api.md). Host SLAs: [`contracts.md`](./contracts.md).
 
 ### Device QA (T5 additions)
 
 | Case | Android Pixel | Android OEM | iOS |
 | --- | --- | --- | --- |
-| Remotes → JS while backgrounded | | | |
-| One tap → one JS transport action | | | |
-| UI play does not emit Remote* | | | |
-| Headless task finish leaves FGS alive | | | N/A |
-| Missing registration (`__DEV__` warn) | | | |
+| Remotes → JS while backgrounded | Pending | Pending | Pending |
+| One tap → one JS transport action | Pending | Pending | Pending |
+| UI play does not emit Remote* | Pending | Pending | Pending |
+| Headless task finish leaves FGS alive | Pending | Pending | N/A |
+| Missing registration (`__DEV__` warn) | Pending | Pending | Pending |
 
-## Device QA matrix (T4)
+## Device QA matrix (T4 + T11)
 
-Emulator audio is weak signal. Physical Android (Pixel API 34/35 + one OEM) + physical iOS required before calling T4 **done** on the roadmap.
+Emulator audio is weak signal. Physical Android (Pixel API 34/35 + one OEM) + physical iOS required before calling T4 / T11 **done** on the roadmap.
 
-**Packaging gate (automated — passed with T4 implementation):** PrivacyInfo + MediaPlayer/AVFoundation podspec; R8 keeps; `exported=true` documented; New Arch guard; CI build-before-plugin-tests; NativeModule types; `pack:check` includes PrivacyInfo.
+**Evidence (fill when signing):**
+
+| Field | Value |
+| --- | --- |
+| Date (ISO) | |
+| Tester | |
+| Git SHA | |
+| Pixel model + OS | |
+| OEM model + OS | |
+| iPhone model + iOS | |
+
+**Packaging gate (automated):** PrivacyInfo (no required-reason APIs — FileManager caches only); MediaPlayer/AVFoundation podspec; R8 keeps; `exported=true` documented; New Arch JS guard; CI `assembleRelease`; NativeModule types; `pack:check` excludes android build caches.
 
 | Case | Android Pixel | Android OEM | iOS |
 | --- | --- | --- | --- |
-| Screen-off audio | | | |
-| Lock screen + shade metadata / artwork / progress | | | |
-| Play / Pause / Stop remotes | | | |
-| Next / Prev visible, no crash | | | |
-| Recents swipe + ContinuePlayback | | | N/A |
-| Grace pause / resume | | | NP elapsed |
-| Deny `POST_NOTIFICATIONS` | | — | N/A |
-| Forced `updateNowPlayingMetadata` | | | |
-| `reset` → `updateOptions` → `add` | | | |
-| Relaunch no zombie session | | | |
-| T3 transport still works in example | | | |
+| Screen-off audio | Pending | Pending | Pending |
+| Lock screen + shade metadata / artwork / progress | Pending | Pending | Pending |
+| Play / Pause / Stop remotes | Pending | Pending | Pending |
+| Next / Prev visible, no crash | Pending | Pending | Pending |
+| Cold start → play → FGS notification (no deadline crash) | Pending | Pending | N/A |
+| Recents swipe + ContinuePlayback | Pending | Pending | N/A |
+| Grace pause / resume | Pending | Pending | NP elapsed |
+| Deny `POST_NOTIFICATIONS` | Pending | — | N/A |
+| Forced `updateNowPlayingMetadata` | Pending | Pending | Pending |
+| `reset` → options persist → `add` / play | Pending | Pending | Pending |
+| Fast Refresh / double `setupPlayer` | Pending | Pending | Pending |
+| RemoteStop pause→reset → re-add → play | Pending | Pending | Pending |
+| Ambient under speech (NP = speech); speech reset keeps ambient | Pending | Pending | Pending |
+| Relaunch no zombie session | Pending | Pending | Pending |
+| T3–T9 transport demos in example | Pending | Pending | Pending |
 
-Record date, devices, and pass/fail when QA completes.
+Mark Pass / Fail / N/A in each cell when QA completes. Fail blocks ROADMAP “done.”
 
 After example `npx expo prebuild`, run `yarn assert:prebuild` from the repo root to verify injected modes / FGS / service / `stopWithTask`.

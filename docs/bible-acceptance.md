@@ -54,7 +54,7 @@ Speech **playlist** used for chapter / verse sequences — see [`queue.md`](./qu
 - [x] `androidAudioContentType: Speech` — via T3 engine attributes (Speech)
 - [x] `androidAudioMixMode: 'default' | 'duckOthers'`
 - [x] iOS Playback + SpokenAudio + DuckOthers + Bluetooth + AirPlay — Playback/SpokenAudio/BT/AirPlay from T3; DuckOthers = T10 mix
-- [ ] Buffer knobs
+- Buffer knobs — **deferred to Phase 2** (Media3 / AVFoundation engine defaults in 0.1.0)
 - [x] `autoHandleInterruptions: false` — emit `remote-duck` only; no auto pause/resume when false
 - [x] `autoUpdateMetadata: true`
 
@@ -83,3 +83,4 @@ See [`silence-tracks.md`](./silence-tracks.md) for product uses.
 - `verse_timings` (app/session)
 - Hymn asset install, sleep timer UI
 - Playback rates product clamp (0.75–1.0 stays in app)
+- Buffer knobs (Phase 2 — engine defaults until then)

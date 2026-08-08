@@ -12,7 +12,9 @@ const root = process.cwd();
 
 const MUST_INCLUDE = [
   'package/build/index.js',
-  'package/android/',
+  'package/android/src/',
+  'package/android/build.gradle',
+  'package/android/consumer-rules.pro',
   'package/ios/',
   'package/ios/PrivacyInfo.xcprivacy',
   'package/expo-module.config.json',
@@ -28,7 +30,15 @@ const MUST_EXCLUDE = [
   'package/internal/',
   'package/AGENTS.md',
   'package/.cursorrules',
+  'package/android/build/',
+  'package/android/.gradle/',
+  'package/android/.idea/',
+  'package/android/local.properties',
 ];
+
+function hasMapFile(files) {
+  return files.some((f) => f.endsWith('.map'));
+}
 
 function listPackedFiles() {
   // --ignore-scripts avoids prepare printing "Building plugin" into stdout
@@ -132,6 +142,10 @@ for (const item of MUST_EXCLUDE) {
   if (starts) {
     errors.push(`forbidden pack entry present: ${item}`);
   }
+}
+
+if (hasMapFile(files)) {
+  errors.push('forbidden pack entry present: *.map (source maps must not ship)');
 }
 
 if (errors.length) {

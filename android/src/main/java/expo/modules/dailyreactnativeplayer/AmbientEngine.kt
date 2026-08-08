@@ -301,25 +301,5 @@ object AmbientEngine {
     Log.d(TAG, msg)
   }
 
-  private fun <T> runOnMainBlocking(block: () -> T): T {
-    if (Looper.myLooper() == Looper.getMainLooper()) {
-      return block()
-    }
-    var result: T? = null
-    var error: Throwable? = null
-    val latch = java.util.concurrent.CountDownLatch(1)
-    mainHandler.post {
-      try {
-        result = block()
-      } catch (t: Throwable) {
-        error = t
-      } finally {
-        latch.countDown()
-      }
-    }
-    latch.await()
-    error?.let { throw it }
-    @Suppress("UNCHECKED_CAST")
-    return result as T
-  }
+  private fun <T> runOnMainBlocking(block: () -> T): T = MainThread.runBlocking(block)
 }

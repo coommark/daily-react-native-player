@@ -5,6 +5,7 @@
 
 import type { PlaybackState } from './State';
 import type { Progress, Track } from './Track';
+import type { PlayerErrorCodeValue } from './errors';
 
 export const HEADLESS_TASK_NAME = 'DailyReactNativePlayer';
 
@@ -56,7 +57,7 @@ export type PlaybackQueueEndedEvent = {
 
 /** Payload for {@link Event.PlaybackError}. */
 export type PlaybackErrorEvent = {
-  code: string;
+  code: PlayerErrorCodeValue | string;
   message: string;
   trackId?: string;
   index?: number;

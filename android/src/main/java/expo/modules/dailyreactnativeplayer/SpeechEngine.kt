@@ -99,6 +99,9 @@ object SpeechEngine {
   private var autoUpdateMetadata = true
 
   @Volatile
+  private var debugLogging = false
+
+  @Volatile
   private var autoHandleInterruptions = false
 
   @Volatile
@@ -263,6 +266,7 @@ object SpeechEngine {
       return
     }
     (options["autoUpdateMetadata"] as? Boolean)?.let { autoUpdateMetadata = it }
+    (options["debug"] as? Boolean)?.let { debugLogging = it }
     (options["autoHandleInterruptions"] as? Boolean)?.let { autoHandleInterruptions = it }
     (options["stopForegroundGracePeriod"] as? Number)?.toDouble()?.let {
       if (it >= 0) stopForegroundGracePeriodSeconds = it
@@ -671,6 +675,9 @@ object SpeechEngine {
     cancelArtworkLoad()
     runOnMainBlocking {
       stopProgressTimerLocked()
+      // Clear play-intent first so late callbacks cannot revive audio mid-reset.
+      player?.playWhenReady = false
+      player?.pause()
       val last = activeTrackOrNull()
       val lastIdx = if (activeIndex >= 0) activeIndex else null
       queueEpoch++
@@ -945,12 +952,13 @@ object SpeechEngine {
 
   private fun clearPlayerLocked() {
     val exo = player ?: return
+    exo.playWhenReady = false
+    exo.pause()
     exo.stop()
     exo.clearMediaItems()
     hasSource = false
     pendingSeekSeconds = null
     lastErrorCode = null
-    exo.playWhenReady = false
   }
 
   private fun activeTrackOrNull(): QueueTrack? =
@@ -1192,7 +1200,7 @@ object SpeechEngine {
   }
 
   private fun log(message: String) {
-    if (Log.isLoggable(TAG, Log.DEBUG)) {
+    if (debugLogging || Log.isLoggable(TAG, Log.DEBUG)) {
       Log.d(TAG, message)
     }
   }
@@ -1202,27 +1210,7 @@ object SpeechEngine {
     return path.endsWith(".m3u8")
   }
 
-  private fun <T> runOnMainBlocking(block: () -> T): T {
-    if (Looper.myLooper() == Looper.getMainLooper()) {
-      return block()
-    }
-    var result: T? = null
-    var error: Throwable? = null
-    val latch = java.util.concurrent.CountDownLatch(1)
-    mainHandler.post {
-      try {
-        result = block()
-      } catch (t: Throwable) {
-        error = t
-      } finally {
-        latch.countDown()
-      }
-    }
-    latch.await()
-    error?.let { throw it }
-    @Suppress("UNCHECKED_CAST")
-    return result as T
-  }
+  private fun <T> runOnMainBlocking(block: () -> T): T = MainThread.runBlocking(block)
 
   private class CapabilityForwardingPlayer(private val exo: ExoPlayer) : ForwardingPlayer(exo) {
     override fun isCommandAvailable(command: Int): Boolean {

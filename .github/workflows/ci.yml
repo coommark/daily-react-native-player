@@ -28,6 +28,33 @@ jobs:
         run: yarn test plugin
       - name: Pack check
         run: yarn pack:check
-      # Android assembleRelease requires example prebuild (no repo-root gradlew).
-      # Residual: run locally after `cd example && npx expo prebuild --platform android`
-      # then `cd android && ./gradlew assembleRelease`. See docs/getting-started.md.
+
+  android-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13'
+          cache: yarn
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install root
+        run: yarn install --frozen-lockfile
+      - name: Build package
+        run: yarn build
+      - name: Install example
+        working-directory: example
+        run: yarn install --frozen-lockfile
+      - name: Prebuild Android
+        working-directory: example
+        run: npx expo prebuild --platform android --no-install
+      - name: Assert prebuild injections
+        run: yarn assert:prebuild
+      - name: Assemble release (R8)
+        working-directory: example/android
+        run: ./gradlew :app:assembleRelease --no-daemon

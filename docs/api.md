@@ -8,7 +8,7 @@ Primary host: [Daily Bible - Offline & Audio](https://dailybiblenow.com)
 
 **Peers:** Expo SDK 57+ (Expo Modules Core required), React Native 0.86+, New Architecture only. Web transport is unsupported. Hosts on Expo &lt;57 must upgrade the app before adopting this package.
 
-## Implemented (T3 + T4 + T5 + T6 + T7)
+## Implemented (T3–T11 hardening)
 
 ```ts
 import {
@@ -209,9 +209,22 @@ Failures throw `PlayerException` with stable `code`:
 
 Call `setupPlayer()` before transport (`reset` is the exception). New Architecture required. Web: transport APIs throw `platform_unsupported`; `addEventListener` / `registerPlaybackService` are no-ops.
 
-## Not yet implemented
+Runtime SLAs (timeouts, remotes fail-closed, stop/reset order, FGS): [`contracts.md`](./contracts.md).
 
-Buffer knobs and remaining device QA (T11) — see [`bible-acceptance.md`](./bible-acceptance.md) and [`ROADMAP.md`](../ROADMAP.md).
+### Options highlights
+
+| Option | Notes |
+| --- | --- |
+| `debug` | Optional verbose logs (default `false`) |
+| `androidAudioMixMode` | `default` \| `duckOthers` |
+| `appKilledPlaybackBehavior` | Continue / Pause / StopRemove |
+| `progressUpdateEventInterval` | Seconds; `0` disables |
+
+**Recommended Stop policy:** `pause()` then `reset()` (see example `playbackService.ts`). Native `reset` also clears play-intent first.
+
+## Deferred (Phase 2)
+
+Buffer knobs — engine defaults in 0.1.0. Physical device P0 QA matrices: [`background-playback.md`](./background-playback.md).
 
 ### Ambient
 

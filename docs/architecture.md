@@ -118,4 +118,6 @@ When idle / not FGS-active, `OnDestroy` releases as before (T3 behavior).
 
 Speech owns the sole MediaSession / Now Playing. Ambient never requests focus and never owns lock-screen metadata. Lazy `AmbientEngine` (second ExoPlayer / AVPlayer) created only on first ambient API. See ADR-18 and [`dual-audio.md`](./dual-audio.md).
 
-Detail expands as tickets land. See also `docs/background-playback.md` and `docs/dual-audio.md`.
+Host-facing runtime SLAs (timeouts, idempotency, remotes fail-closed, stop/reset, FGS): [`contracts.md`](./contracts.md).
+
+See also `docs/background-playback.md` and `docs/dual-audio.md`.

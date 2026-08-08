@@ -3,12 +3,13 @@ package expo.modules.dailyreactnativeplayer
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.media3.session.MediaSession
+import expo.modules.kotlin.exception.CodedException
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -18,7 +19,6 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 object SessionHolder {
   private const val TAG = "DailyPlayerSession"
-  private val mainHandler = Handler(Looper.getMainLooper())
 
   @Volatile
   private var session: MediaSession? = null
@@ -33,6 +33,7 @@ object SessionHolder {
   private var playbackService: PlaybackService? = null
 
   private val attachInFlight = AtomicBoolean(false)
+  private val attachWaiters = mutableListOf<CountDownLatch>()
 
   fun getSession(): MediaSession? = session
 
@@ -47,7 +48,7 @@ object SessionHolder {
 
   /** Called from [PlaybackService.onCreate] / destroy. */
   fun onServiceCreated(service: PlaybackService) {
-    runOnMainBlocking {
+    MainThread.runBlocking {
       playbackService = service
       session?.let { ensureAddedToService(it, service) }
       log("service bound; sessionAttached=${session != null}")
@@ -55,7 +56,7 @@ object SessionHolder {
   }
 
   fun onServiceDestroyed(service: PlaybackService) {
-    runOnMainBlocking {
+    MainThread.runBlocking {
       if (playbackService === service) {
         playbackService = null
       }
@@ -63,45 +64,74 @@ object SessionHolder {
   }
 
   fun attachIfNeeded(context: Context) {
-    runOnMainBlocking {
-      if (session != null) {
-        startService(context.applicationContext)
-        session?.let { s -> playbackService?.let { ensureAddedToService(s, it) } }
-        return@runOnMainBlocking
-      }
-      val player = SpeechEngine.getSessionPlayer() ?: return@runOnMainBlocking
-      if (!attachInFlight.compareAndSet(false, true)) {
-        return@runOnMainBlocking
-      }
-      try {
-        val id = UUID.randomUUID().toString()
-        val builder =
-          MediaSession.Builder(context.applicationContext, player)
-            .setId(id)
-        launcherPendingIntent(context)?.let { builder.setSessionActivity(it) }
-        val mediaSession = builder.build()
-        session = mediaSession
-        sessionId = id
-        log("session created idSuffix=${id.takeLast(8)}")
-        startService(context.applicationContext)
-        playbackService?.let { ensureAddedToService(mediaSession, it) }
-      } catch (e: Exception) {
-        Log.e(TAG, "attach failed: ${e.message}", e)
-        try {
-          session?.release()
-        } catch (_: Exception) {
+    val appContext = context.applicationContext
+    // Loop: either attach, wait for in-flight attach, or reuse existing session.
+    while (true) {
+      val waitLatch =
+        MainThread.runBlocking {
+          if (session != null) {
+            ensureSessionRegistered(appContext)
+            return@runBlocking null as CountDownLatch?
+          }
+          if (!attachInFlight.compareAndSet(false, true)) {
+            // Another attach is running. On main (re-entrant), do not wait — outer attach finishes.
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+              return@runBlocking null
+            }
+            val latch = CountDownLatch(1)
+            attachWaiters.add(latch)
+            return@runBlocking latch
+          }
+          try {
+            val player = SpeechEngine.getSessionPlayer()
+            if (player == null) {
+              return@runBlocking null
+            }
+            val id = UUID.randomUUID().toString()
+            val builder =
+              MediaSession.Builder(appContext, player)
+                .setId(id)
+            launcherPendingIntent(appContext)?.let { builder.setSessionActivity(it) }
+            val mediaSession = builder.build()
+            session = mediaSession
+            sessionId = id
+            log("session created idSuffix=${id.takeLast(8)}")
+            // Register session on service before / with FGS start (Slice 3 ordering).
+            ensureSessionRegistered(appContext)
+          } catch (e: Exception) {
+            Log.e(TAG, "attach failed: ${e.message}", e)
+            try {
+              session?.release()
+            } catch (_: Exception) {
+            }
+            session = null
+            sessionId = null
+          } finally {
+            attachInFlight.set(false)
+            val waiters = attachWaiters.toList()
+            attachWaiters.clear()
+            waiters.forEach { it.countDown() }
+          }
+          null
         }
-        session = null
-        sessionId = null
-      } finally {
-        attachInFlight.set(false)
+
+      if (waitLatch == null) {
+        return
       }
+      if (!waitLatch.await(MainThread.MAIN_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+        throw CodedException(
+          "setup_timeout",
+          "MediaSession attach timed out after ${MainThread.MAIN_TIMEOUT_MS}ms",
+          null
+        )
+      }
+      // Retry loop: session should exist, or attach failed and we try again / exit.
     }
   }
 
   fun applyOptions(options: Map<String, Any?>?) {
     SpeechEngine.applyOptions(options)
-    runOnMainBlocking {
+    MainThread.runBlocking {
       SpeechEngine.refreshCommandAvailability()
     }
   }
@@ -118,18 +148,17 @@ object SessionHolder {
   }
 
   fun onPlaybackStarted(context: Context) {
-    runOnMainBlocking {
-      if (session == null) {
-        attachIfNeeded(context)
-      } else {
-        startService(context)
-        playbackService?.let { svc -> session?.let { ensureAddedToService(it, svc) } }
+    if (session == null) {
+      attachIfNeeded(context)
+    } else {
+      MainThread.runBlocking {
+        ensureSessionRegistered(context.applicationContext)
       }
     }
   }
 
   fun releaseSession() {
-    runOnMainBlocking {
+    MainThread.runBlocking {
       log("releaseSession")
       val s = session
       val svc = playbackService
@@ -146,6 +175,21 @@ object SessionHolder {
       session = null
       sessionId = null
       serviceStarted = false
+    }
+  }
+
+  /** Prefer addSession before startForegroundService when service is already alive. */
+  private fun ensureSessionRegistered(context: Context) {
+    val s = session ?: return
+    val svc = playbackService
+    if (svc != null) {
+      ensureAddedToService(s, svc)
+      startService(context)
+      // Re-ensure after start in case service was recreated.
+      playbackService?.let { ensureAddedToService(s, it) }
+    } else {
+      startService(context)
+      playbackService?.let { ensureAddedToService(s, it) }
     }
   }
 
@@ -175,27 +219,5 @@ object SessionHolder {
 
   private fun log(message: String) {
     Log.i(TAG, message)
-  }
-
-  private fun <T> runOnMainBlocking(block: () -> T): T {
-    if (Looper.myLooper() == Looper.getMainLooper()) {
-      return block()
-    }
-    var result: T? = null
-    var error: Throwable? = null
-    val latch = CountDownLatch(1)
-    mainHandler.post {
-      try {
-        result = block()
-      } catch (t: Throwable) {
-        error = t
-      } finally {
-        latch.countDown()
-      }
-    }
-    latch.await()
-    error?.let { throw it }
-    @Suppress("UNCHECKED_CAST")
-    return result as T
   }
 }

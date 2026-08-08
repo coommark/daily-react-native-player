@@ -23,6 +23,11 @@ let persistedOptions: PlayerOptions = {
 /** Forced now-playing overlay. Cleared on reset or when adding to an empty queue. */
 let forcedNowPlaying: NowPlayingMetadata | null = null;
 
+/** In-flight setup coalesce — concurrent callers share one native setup. */
+let setupPromise: Promise<void> | null = null;
+
+const SETUP_TIMEOUT_MS = 10_000;
+
 function ensureNative(): typeof NativeModule {
   if (Platform.OS === 'web') {
     throw new PlayerException(
@@ -180,8 +185,45 @@ export async function setupPlayer(options?: PlayerOptionsInput): Promise<void> {
   if (options) {
     persistedOptions = mergePlayerOptions(persistedOptions, options);
   }
+
+  if (setupPromise) {
+    await setupPromise;
+    return;
+  }
+
+  const nativeCall = (async () => {
+    try {
+      await ensureNative().setupPlayer(optionsToNativeMap(persistedOptions));
+    } catch (e) {
+      rethrowNative(e);
+    }
+  })();
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timed = Promise.race([
+    nativeCall.finally(() => {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }),
+    new Promise<void>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(
+          new PlayerException(
+            PlayerErrorCode.SetupTimeout,
+            `setupPlayer timed out after ${SETUP_TIMEOUT_MS}ms`
+          )
+        );
+      }, SETUP_TIMEOUT_MS);
+    }),
+  ]);
+
+  setupPromise = timed.finally(() => {
+    setupPromise = null;
+  });
+
   try {
-    await ensureNative().setupPlayer(optionsToNativeMap(persistedOptions));
+    await setupPromise;
   } catch (e) {
     rethrowNative(e);
   }
@@ -478,4 +520,5 @@ export function __resetPlayerJsStateForTests(): void {
     capabilities: [...DEFAULT_PLAYER_OPTIONS.capabilities],
   };
   forcedNowPlaying = null;
+  setupPromise = null;
 }

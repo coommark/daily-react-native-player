@@ -42,19 +42,34 @@ Install Expo’s `expo-module` skill for agents editing native modules:
 npx skills@latest add expo/skills --skill 'expo-module'
 ```
 
+## Support matrix
+
+| | |
+| --- | --- |
+| **Tested** | Expo 57.x / RN 0.86.2 / React 19.2.3 / Node ≥22.13 |
+| **Floor** | `expo >=57`, `react-native >=0.86`, New Architecture **only** |
+| **iOS deployment** | Podspec floor **iOS 16.4** |
+| **0.x semver** | Breaking changes may ship in 0.x with a CHANGELOG entry — **pin** your dependency |
+
+Docs live on GitHub (`docs/`); the npm tarball ships README + LICENSE + CHANGELOG only.
+
 ## Test matrix
 
 | Layer | What it covers |
 | --- | --- |
-| **Jest** (`yarn test`) | Public exports, validation, option merge, event wire-name parity, web stubs |
-| **Device / emulator** | Real queue auto-advance, MediaSession remotes→JS→skip*, now-playing refresh, progress ticks |
-| **Android `assembleRelease`** | After `consumer-rules.pro` / Media3 changes |
+| **Jest** (`yarn test`) | Public exports, validation, option merge, setup coalesce/timeout, event wire-name parity, web stubs |
+| **CI `assembleRelease`** | Example prebuild + R8 minify (Media3 / PlaybackService keep rules) |
+| **Physical device** | P0 lock-screen / notification / remotes — see [`background-playback.md`](./background-playback.md) |
 
 Emulator audio is non-authoritative for P0 lock-screen QA; prefer a physical device for remotes.
 
 ## Naming
 
 Do not name commercial predecessor libraries in code, docs, issues, or commits.
+
+## Security
+
+See root [`SECURITY.md`](../SECURITY.md) for private vulnerability reporting.
 
 ## Private reference
 

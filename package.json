@@ -4,9 +4,42 @@
   "description": "Expo-first background audio for React Native (New Architecture only). Lock-screen & notification remotes, now-playing metadata, speech queue, WAV/mp3/m4a + HLS, native silence tracks, optional ambient dual-audio. MIT. Built for Daily Bible.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
+  "files": [
+    "build",
+    "!build/**/*.map",
+    "android/src",
+    "android/build.gradle",
+    "android/consumer-rules.pro",
+    "ios",
+    "expo-module.config.json",
+    "app.plugin.js",
+    "plugin/build",
+    "!plugin/build/**/*.map",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node internal/module_scripts/build.js",
+    "clean": "node internal/module_scripts/clean.js",
+    "lint": "eslint src/ plugin/src/",
+    "test": "CI=1 node internal/module_scripts/test.js",
+    "test:watch": "node internal/module_scripts/test.js",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p plugin/tsconfig.json",
+    "pack:check": "node internal/module_scripts/pack-check.js",
+    "assert:prebuild": "node internal/module_scripts/assert-prebuild.js",
+    "prepare": "node internal/module_scripts/prepare.js",
+    "prepublishOnly": "yarn build && yarn pack:check",
+    "open:ios": "node internal/module_scripts/open-ios.js",
+    "open:android": "node internal/module_scripts/open-android.js"
+  },
   "exports": {
     ".": {
       "types": "./build/index.d.ts",
+      "react-native": "./build/index.js",
       "default": "./build/index.js"
     },
     "./app.plugin": "./app.plugin.js",
@@ -18,29 +51,6 @@
   ],
   "engines": {
     "node": ">=22.13.0"
-  },
-  "files": [
-    "build",
-    "android",
-    "ios",
-    "expo-module.config.json",
-    "app.plugin.js",
-    "plugin/build",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "node internal/module_scripts/build.js",
-    "clean": "node internal/module_scripts/clean.js",
-    "lint": "eslint src/ plugin/src/",
-    "test": "CI=1 node internal/module_scripts/test.js",
-    "test:watch": "node internal/module_scripts/test.js",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p plugin/tsconfig.json",
-    "pack:check": "node internal/module_scripts/pack-check.js",
-    "assert:prebuild": "node internal/module_scripts/assert-prebuild.js",
-    "prepare": "node internal/module_scripts/prepare.js",
-    "open:ios": "node internal/module_scripts/open-ios.js",
-    "open:android": "node internal/module_scripts/open-android.js"
   },
   "keywords": [
     "react-native",

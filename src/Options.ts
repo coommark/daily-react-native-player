@@ -27,6 +27,8 @@ export type PlayerOptions = {
    * `duckOthers` adds iOS `.duckOthers`; Android ambient never requests focus.
    */
   androidAudioMixMode: 'default' | 'duckOthers';
+  /** Verbose native/JS logs. Off by default; no PII. */
+  debug: boolean;
 };
 
 export type PlayerOptionsInput = Partial<{
@@ -37,6 +39,7 @@ export type PlayerOptionsInput = Partial<{
   autoHandleInterruptions: boolean;
   progressUpdateEventInterval: number;
   androidAudioMixMode: 'default' | 'duckOthers';
+  debug: boolean;
 }>;
 
 export const DEFAULT_PLAYER_OPTIONS: PlayerOptions = {
@@ -47,6 +50,7 @@ export const DEFAULT_PLAYER_OPTIONS: PlayerOptions = {
   autoHandleInterruptions: false,
   progressUpdateEventInterval: 1,
   androidAudioMixMode: 'default',
+  debug: false,
 };
 
 const VALID_KILL = new Set<string>(Object.values(AppKilledPlaybackBehavior));
@@ -127,6 +131,10 @@ export function mergePlayerOptions(
     next.androidAudioMixMode = partial.androidAudioMixMode;
   }
 
+  if (typeof partial.debug === 'boolean') {
+    next.debug = partial.debug;
+  }
+
   return next;
 }
 
@@ -140,5 +148,6 @@ export function optionsToNativeMap(options: PlayerOptions): Record<string, unkno
     autoHandleInterruptions: options.autoHandleInterruptions,
     progressUpdateEventInterval: options.progressUpdateEventInterval,
     androidAudioMixMode: options.androidAudioMixMode,
+    debug: options.debug,
   };
 }
