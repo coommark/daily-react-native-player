@@ -3,6 +3,8 @@
 -keep class expo.modules.dailyreactnativeplayer.SpeechEngine { *; }
 -keep class expo.modules.dailyreactnativeplayer.SessionHolder { *; }
 -keep class expo.modules.dailyreactnativeplayer.ArtworkLoader { *; }
+-keep class expo.modules.dailyreactnativeplayer.RemoteEventHub { *; }
+-keep class expo.modules.dailyreactnativeplayer.HeadlessPlaybackBootstrap { *; }
 -keep class androidx.media3.session.MediaSessionService { *; }
 -keep class androidx.media3.session.MediaSession { *; }
 -keep class androidx.media3.session.MediaSession$Builder { *; }

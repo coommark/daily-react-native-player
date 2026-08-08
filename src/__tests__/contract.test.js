@@ -1,5 +1,5 @@
 /**
- * Contract tests — planned Bible surface + implemented T3/T4 exports.
+ * Contract tests — planned Bible surface + implemented T3/T4/T5 exports.
  */
 
 const PLANNED_PUBLIC_SURFACE = [
@@ -57,6 +57,14 @@ const IMPLEMENTED_T4 = [
   'PlayerException',
 ];
 
+const IMPLEMENTED_T5 = [
+  'registerPlaybackService',
+  'addEventListener',
+  'Event',
+  'HEADLESS_TASK_NAME',
+  'REMOTE_EVENT_NAMES',
+];
+
 jest.mock('../DailyReactNativePlayerModule', () => ({
   __esModule: true,
   default: {
@@ -72,6 +80,7 @@ jest.mock('../DailyReactNativePlayerModule', () => ({
     getPlayWhenReady: jest.fn(async () => false),
     setPlayWhenReady: jest.fn(async () => {}),
     reset: jest.fn(async () => {}),
+    addListener: jest.fn(() => ({ remove: jest.fn() })),
   },
 }));
 
@@ -107,5 +116,17 @@ describe('daily-react-native-player contract', () => {
     expect(api.State.Playing).toBe('playing');
     expect(api.PlayerErrorCode.NoSource).toBe('no_source');
     expect(api.PlayerErrorCode.SetupTimeout).toBe('setup_timeout');
+  });
+
+  it('exports implemented T5 API', () => {
+    const api = require('../index');
+    for (const name of IMPLEMENTED_T5) {
+      expect(api[name]).toBeDefined();
+    }
+    expect(typeof api.registerPlaybackService).toBe('function');
+    expect(typeof api.addEventListener).toBe('function');
+    expect(api.HEADLESS_TASK_NAME).toBe('DailyReactNativePlayer');
+    expect(api.Event.RemotePlay).toBe('remote-play');
+    expect(api.Event.RemoteDuck).toBe('remote-duck');
   });
 });

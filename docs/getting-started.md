@@ -36,6 +36,23 @@ Then `npx expo prebuild` (or a continuous native generation workflow).
 
 Bare React Native hosts: see the manual Info.plist / AndroidManifest snippet in [`background-playback.md`](./background-playback.md).
 
+## Playback service (T5 — required for remotes)
+
+Register **before** the root component so Android headless remotes hit JS:
+
+```ts
+// index.ts
+import { registerPlaybackService } from 'daily-react-native-player';
+import { registerRootComponent } from 'expo';
+import App from './App';
+import { playbackService } from './playbackService';
+
+registerPlaybackService(() => playbackService);
+registerRootComponent(App);
+```
+
+See [`api.md`](./api.md) for `Event.Remote*` handlers. Do not use `expo-background-task` for this.
+
 ## Progressive playback (T3)
 
 ```ts
@@ -127,8 +144,8 @@ The example depends on `daily-react-native-player` via `file:..` (npm-consumer s
 - [x] `reset` then load again works
 - [x] Fast Refresh does not brick setup (idempotent `setupPlayer`)
 - [x] Invalid URL surfaces a `PlayerError` / `PlayerException` code
-- [ ] **Physical** Android: lock screen + notification metadata + Play/Pause/Stop + ContinuePlayback swipe-away
-- [ ] **Physical** iOS: Now Playing + remotes
+- [ ] **Physical** Android: lock screen remotes → JS service + ContinuePlayback
+- [ ] **Physical** iOS: Now Playing remotes → JS service
 
 Emulator audio fidelity is non-authoritative for P0 background QA. See the device matrix in [`background-playback.md`](./background-playback.md).
 
@@ -136,7 +153,7 @@ Emulator audio fidelity is non-authoritative for P0 background QA. See the devic
 
 ## Next
 
-1. Complete T4 physical device QA; then `registerPlaybackService` (T5)
-2. Queue + events (T6)
+1. Complete T4/T5 physical device QA (remotes → JS while backgrounded)
+2. Queue + Playback* events (T6)
 
 See [`ROADMAP.md`](../ROADMAP.md).

@@ -4,7 +4,8 @@ import UIKit
 
 /**
  * iOS Now Playing + remote command center for the speech player.
- * Next/Previous are no-op until T5/T6.
+ * Remotes are emit-only (T5) — JS `registerPlaybackService` owns transport policy.
+ * Scrubber seek stays native.
  */
 final class NowPlayingController {
   static let shared = NowPlayingController()
@@ -14,8 +15,10 @@ final class NowPlayingController {
     "play", "pause", "stop", "skipToNext", "skipToPrevious"
   ]
   private var autoUpdateMetadata = true
+  private var autoHandleInterruptions = false
   private var artworkTask: URLSessionDataTask?
   private var artworkGeneration = 0
+  private var interruptionObserver: NSObjectProtocol?
 
   private init() {}
 
@@ -24,39 +27,35 @@ final class NowPlayingController {
     attached = true
     let center = MPRemoteCommandCenter.shared()
     center.playCommand.addTarget { _ in
-      do {
-        try SpeechEngine.shared.play()
-        return .success
-      } catch {
-        return .commandFailed
-      }
+      guard self.capabilities.contains("play") else { return .commandFailed }
+      RemoteEventHub.shared.emit(.remotePlay)
+      return .success
     }
     center.pauseCommand.addTarget { _ in
-      SpeechEngine.shared.pause()
+      guard self.capabilities.contains("pause") else { return .commandFailed }
+      RemoteEventHub.shared.emit(.remotePause)
       return .success
     }
     center.stopCommand.addTarget { _ in
-      SpeechEngine.shared.pause()
+      guard self.capabilities.contains("stop") else { return .commandFailed }
+      RemoteEventHub.shared.emit(.remoteStop)
       return .success
     }
     center.togglePlayPauseCommand.addTarget { _ in
-      if SpeechEngine.shared.getPlayWhenReady() {
-        SpeechEngine.shared.pause()
-      } else {
-        do {
-          try SpeechEngine.shared.play()
-        } catch {
-          return .commandFailed
-        }
+      guard self.capabilities.contains("play") || self.capabilities.contains("pause") else {
+        return .commandFailed
       }
+      RemoteEventHub.shared.emit(.remotePlayPause)
       return .success
     }
     center.nextTrackCommand.addTarget { _ in
-      // T4 no-op
+      guard self.capabilities.contains("skipToNext") else { return .commandFailed }
+      RemoteEventHub.shared.emit(.remoteNext)
       return .success
     }
     center.previousTrackCommand.addTarget { _ in
-      // T4 no-op
+      guard self.capabilities.contains("skipToPrevious") else { return .commandFailed }
+      RemoteEventHub.shared.emit(.remotePrevious)
       return .success
     }
     center.changePlaybackPositionCommand.addTarget { event in
@@ -72,12 +71,16 @@ final class NowPlayingController {
       }
     }
     applyRemoteEnables()
+    observeInterruptions()
   }
 
   func applyOptions(_ options: [String: Any]?) {
     guard let options else { return }
     if let auto = options["autoUpdateMetadata"] as? Bool {
       autoUpdateMetadata = auto
+    }
+    if let autoHandle = options["autoHandleInterruptions"] as? Bool {
+      autoHandleInterruptions = autoHandle
     }
     if let caps = options["capabilities"] as? [String] {
       capabilities = Set(caps)
@@ -128,6 +131,10 @@ final class NowPlayingController {
 
   func tearDown() {
     clearDisplay()
+    if let interruptionObserver {
+      NotificationCenter.default.removeObserver(interruptionObserver)
+      self.interruptionObserver = nil
+    }
     let center = MPRemoteCommandCenter.shared()
     center.playCommand.removeTarget(nil)
     center.pauseCommand.removeTarget(nil)
@@ -137,6 +144,44 @@ final class NowPlayingController {
     center.previousTrackCommand.removeTarget(nil)
     center.changePlaybackPositionCommand.removeTarget(nil)
     attached = false
+  }
+
+  private func observeInterruptions() {
+    if interruptionObserver != nil { return }
+    interruptionObserver = NotificationCenter.default.addObserver(
+      forName: AVAudioSession.interruptionNotification,
+      object: AVAudioSession.sharedInstance(),
+      queue: .main
+    ) { [weak self] notification in
+      self?.handleInterruption(notification)
+    }
+  }
+
+  private func handleInterruption(_ notification: Notification) {
+    guard
+      let info = notification.userInfo,
+      let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+      let type = AVAudioSession.InterruptionType(rawValue: typeValue)
+    else {
+      return
+    }
+    switch type {
+    case .began:
+      RemoteEventHub.shared.emitDuck(paused: true, permanent: false)
+      if autoHandleInterruptions {
+        SpeechEngine.shared.pause()
+      }
+    case .ended:
+      let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+      let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+      let shouldResume = options.contains(.shouldResume)
+      RemoteEventHub.shared.emitDuck(paused: false, permanent: !shouldResume)
+      if autoHandleInterruptions && shouldResume {
+        try? SpeechEngine.shared.play()
+      }
+    @unknown default:
+      break
+    }
   }
 
   private func applyRemoteEnables() {

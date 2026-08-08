@@ -1,7 +1,11 @@
 package expo.modules.dailyreactnativeplayer
 
 import android.content.Context
+import android.media.AudioAttributes as PlatformAudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -53,6 +57,9 @@ object SpeechEngine {
   private var autoUpdateMetadata = true
 
   @Volatile
+  private var autoHandleInterruptions = false
+
+  @Volatile
   private var killBehavior: KillBehavior = KillBehavior.CONTINUE
 
   @Volatile
@@ -64,6 +71,38 @@ object SpeechEngine {
 
   @Volatile
   private var artworkFuture: Future<*>? = null
+
+  private var audioFocusRequest: AudioFocusRequest? = null
+
+  private val audioFocusListener =
+    AudioManager.OnAudioFocusChangeListener { focusChange ->
+      when (focusChange) {
+        AudioManager.AUDIOFOCUS_LOSS -> {
+          RemoteEventHub.emitDuck(paused = true, permanent = true)
+          if (autoHandleInterruptions) {
+            pause()
+          }
+        }
+        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+          RemoteEventHub.emitDuck(paused = true, permanent = false)
+          if (autoHandleInterruptions) {
+            pause()
+          }
+        }
+        AudioManager.AUDIOFOCUS_GAIN -> {
+          RemoteEventHub.emitDuck(paused = false, permanent = false)
+          // Resume only when auto-handle is on (Bible uses false).
+          if (autoHandleInterruptions && hasSource) {
+            try {
+              play()
+            } catch (_: Exception) {
+              // ignore
+            }
+          }
+        }
+      }
+    }
 
   enum class KillBehavior {
     CONTINUE,
@@ -96,7 +135,8 @@ object SpeechEngine {
           .build()
       val exo =
         ExoPlayer.Builder(app)
-          .setAudioAttributes(audioAttributes, true)
+          // Focus owned by SpeechEngine so we can emit RemoteDuck (T5).
+          .setAudioAttributes(audioAttributes, /* handleAudioFocus= */ false)
           .build()
       exo.addListener(
         object : Player.Listener {
@@ -131,6 +171,7 @@ object SpeechEngine {
       return
     }
     (options["autoUpdateMetadata"] as? Boolean)?.let { autoUpdateMetadata = it }
+    (options["autoHandleInterruptions"] as? Boolean)?.let { autoHandleInterruptions = it }
     (options["stopForegroundGracePeriod"] as? Number)?.toDouble()?.let {
       if (it >= 0) stopForegroundGracePeriodSeconds = it
     }
@@ -249,6 +290,9 @@ object SpeechEngine {
         throw CodedException("no_source", "No media source loaded", null)
       }
       val exo = requirePlayer()
+      if (!requestAudioFocus()) {
+        log("audio focus not granted — playing anyway")
+      }
       if (exo.playbackState == Player.STATE_ENDED) {
         exo.seekTo(0)
       }
@@ -267,6 +311,7 @@ object SpeechEngine {
         it.playWhenReady = false
         it.pause()
       }
+      abandonAudioFocus()
     }
   }
 
@@ -397,6 +442,7 @@ object SpeechEngine {
   fun release() {
     cancelArtworkLoad()
     runOnMainBlocking {
+      abandonAudioFocus()
       SessionHolder.releaseSession()
       sessionPlayer = null
       player?.release()
@@ -477,6 +523,45 @@ object SpeechEngine {
     return ms / 1000.0
   }
 
+  private fun requestAudioFocus(): Boolean {
+    val ctx = appContext ?: return false
+    val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val attrs =
+        PlatformAudioAttributes.Builder()
+          .setUsage(PlatformAudioAttributes.USAGE_MEDIA)
+          .setContentType(PlatformAudioAttributes.CONTENT_TYPE_SPEECH)
+          .build()
+      val req =
+        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+          .setAudioAttributes(attrs)
+          .setOnAudioFocusChangeListener(audioFocusListener, mainHandler)
+          .setAcceptsDelayedFocusGain(true)
+          .build()
+      audioFocusRequest = req
+      am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    } else {
+      @Suppress("DEPRECATION")
+      am.requestAudioFocus(
+        audioFocusListener,
+        AudioManager.STREAM_MUSIC,
+        AudioManager.AUDIOFOCUS_GAIN,
+      ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+  }
+
+  private fun abandonAudioFocus() {
+    val ctx = appContext ?: return
+    val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+      audioFocusRequest = null
+    } else {
+      @Suppress("DEPRECATION")
+      am.abandonAudioFocus(audioFocusListener)
+    }
+  }
+
   private fun log(message: String) {
     if (Log.isLoggable(TAG, Log.DEBUG)) {
       Log.d(TAG, message)
@@ -506,7 +591,8 @@ object SpeechEngine {
   }
 
   /**
-   * Advertises next/previous when capabilities say so, but no-ops seeks (T4 / T5 seam).
+   * Session-facing player: remotes emit to JS (T5); seek stays native.
+   * Internal [SpeechEngine.play]/[pause] use raw [ExoPlayer] — never this wrapper.
    */
   private class CapabilityForwardingPlayer(private val exo: ExoPlayer) : ForwardingPlayer(exo) {
     override fun isCommandAvailable(command: Int): Boolean {
@@ -528,25 +614,50 @@ object SpeechEngine {
       return buildPlayerCommands()
     }
 
-    override fun seekToNext() {
-      // T4 no-op
+    override fun play() {
+      if (capabilities.contains("play") || capabilities.contains("pause")) {
+        RemoteEventHub.emit(RemoteEventHub.REMOTE_PLAY)
+      }
     }
 
-    override fun seekToNextMediaItem() {
-      // T4 no-op
+    override fun pause() {
+      if (capabilities.contains("pause") || capabilities.contains("play")) {
+        RemoteEventHub.emit(RemoteEventHub.REMOTE_PAUSE)
+      }
     }
 
-    override fun seekToPrevious() {
-      // T4 no-op
-    }
-
-    override fun seekToPreviousMediaItem() {
-      // T4 no-op
+    override fun setPlayWhenReady(playWhenReady: Boolean) {
+      if (playWhenReady) {
+        play()
+      } else {
+        pause()
+      }
     }
 
     override fun stop() {
-      pause()
-      playWhenReady = false
+      if (capabilities.contains("stop")) {
+        RemoteEventHub.emit(RemoteEventHub.REMOTE_STOP)
+      }
+    }
+
+    override fun seekToNext() {
+      if (capabilities.contains("skipToNext")) {
+        RemoteEventHub.emit(RemoteEventHub.REMOTE_NEXT)
+      }
+    }
+
+    override fun seekToNextMediaItem() {
+      seekToNext()
+    }
+
+    override fun seekToPrevious() {
+      if (capabilities.contains("skipToPrevious")) {
+        RemoteEventHub.emit(RemoteEventHub.REMOTE_PREVIOUS)
+      }
+    }
+
+    override fun seekToPreviousMediaItem() {
+      seekToPrevious()
     }
   }
 }

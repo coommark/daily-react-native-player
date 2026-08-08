@@ -1,5 +1,7 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
+import type { RemoteDuckEvent } from './Event';
+
 type ProgressPayload = {
   position: number;
   duration: number;
@@ -22,7 +24,17 @@ type MetadataPayload = {
   duration?: number;
 };
 
-declare class DailyReactNativePlayerModule extends NativeModule {
+type PlayerEvents = {
+  'remote-play': () => void;
+  'remote-pause': () => void;
+  'remote-play-pause': () => void;
+  'remote-stop': () => void;
+  'remote-next': () => void;
+  'remote-previous': () => void;
+  'remote-duck': (event: RemoteDuckEvent) => void;
+};
+
+declare class DailyReactNativePlayerModule extends NativeModule<PlayerEvents> {
   setupPlayer(options?: Record<string, unknown>): Promise<void>;
   updateOptions(options?: Record<string, unknown>): Promise<void>;
   add(track: TrackPayload): Promise<void>;

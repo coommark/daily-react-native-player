@@ -1,5 +1,6 @@
 package expo.modules.dailyreactnativeplayer
 
+import android.os.Bundle
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.exception.CodedException
@@ -8,7 +9,23 @@ class DailyReactNativePlayerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("DailyReactNativePlayer")
 
+    Events(RemoteEventHub.ALL_EVENTS)
+
+    OnCreate {
+      RemoteEventHub.setEmitter { name, body ->
+        sendEvent(name, body ?: Bundle.EMPTY)
+      }
+    }
+
     OnDestroy {
+      // Keep emitter when ContinuePlayback leaves FGS alive — remotes may still need hub
+      // until React recreates the module. Clear only on full teardown path.
+      val keepAlive =
+        SpeechEngine.getKillBehavior() == SpeechEngine.KillBehavior.CONTINUE &&
+          SessionHolder.isFgsLikelyActive()
+      if (!keepAlive) {
+        RemoteEventHub.setEmitter(null)
+      }
       SpeechEngine.releaseIfAllowed()
     }
 

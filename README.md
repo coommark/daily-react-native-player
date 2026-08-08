@@ -67,15 +67,16 @@ Bed music under speech without crackle, without stealing audio focus, without hi
 
 ## Status
 
-**T4 MediaSession / Now Playing landed (code).** Progressive transport + lock-screen/notification session, metadata APIs, ContinuePlayback. **Physical device QA still required** before marking T4 done on the roadmap.
+**T5 `registerPlaybackService` landed.** Remotes are emit-only to JS (fail-closed). **Physical device QA** still required for T4 session artifacts + T5 remotes→JS before calling P0 background fully done.
 
 | Area | Status |
 | --- | --- |
 | Expo module + example app | Done (New Arch) |
 | Config plugin (iOS audio BG + Android FGS) | Done (T2) |
 | Local WAV + progressive mp3 / m4a | Done (T3) |
-| Background / lock-screen / notification controls | Code complete (T4) — device QA pending |
-| Queue + events | Planned (T6) |
+| Background / lock-screen / notification session | Code complete (T4) — device QA pending |
+| `registerPlaybackService` + Remote* → JS | Done (T5) — device QA pending |
+| Queue + Playback* events | Planned (T6) |
 | Silence tracks | Planned (core / T7) |
 | HLS | Planned (T9; seek-after-ready) |
 | Ambient dual-audio | Planned (opt-in; required for Bible-ready 0.1.0) |
@@ -115,7 +116,14 @@ npx expo install daily-react-native-player
 ```
 
 ```ts
-import { setupPlayer, add, play } from 'daily-react-native-player';
+// index.ts — remotes require registerPlaybackService before root
+import { registerPlaybackService, setupPlayer, add, play } from 'daily-react-native-player';
+import { registerRootComponent } from 'expo';
+import App from './App';
+import { playbackService } from './playbackService';
+
+registerPlaybackService(() => playbackService);
+registerRootComponent(App);
 ```
 
 Add the config plugin so prebuild injects iOS `audio` background mode and Android media foreground-service permissions / `MediaSessionService`:

@@ -25,3 +25,12 @@ export type { PlayerOptions, PlayerOptionsInput, AppKilledPlaybackBehaviorValue 
 export type { NowPlayingMetadata } from './Metadata';
 export { PlayerErrorCode, PlayerException, isPlayerException } from './errors';
 export type { PlayerError, PlayerErrorCodeValue } from './errors';
+
+export { Event, HEADLESS_TASK_NAME, REMOTE_EVENT_NAMES } from './Event';
+export type { EventType, RemoteDuckEvent } from './Event';
+export { addEventListener, registerPlaybackService } from './registerPlaybackService';
+export type {
+  EventSubscription,
+  PlaybackServiceFactory,
+  ServiceHandler,
+} from './registerPlaybackService';

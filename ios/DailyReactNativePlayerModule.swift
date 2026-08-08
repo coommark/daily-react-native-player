@@ -4,7 +4,21 @@ public class DailyReactNativePlayerModule: Module {
   public func definition() -> ModuleDefinition {
     Name("DailyReactNativePlayer")
 
+    Events(RemoteEventName.allWireNames)
+
+    OnCreate {
+      RemoteEventHub.shared.setEmitter { [weak self] name, body in
+        self?.sendEvent(name, body ?? [:])
+      }
+    }
+
     OnDestroy {
+      // Mirror Android: keep emitter when ContinuePlayback would skip engine release.
+      // iOS has no FGS flag; keep hub unless we are about to release the engine.
+      let keepAlive = SpeechEngine.shared.shouldKeepAliveOnModuleDestroy()
+      if !keepAlive {
+        RemoteEventHub.shared.setEmitter(nil)
+      }
       SpeechEngine.shared.releaseIfAllowed()
     }
 

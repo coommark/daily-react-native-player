@@ -12,7 +12,7 @@ Non-negotiable for v0.1 / Bible-ready release — required by
 - iOS `UIBackgroundModes: audio`
 - Lock-screen and notification controls: play, pause, stop, next, previous
 - Now-playing artifacts: title, artist, album, artwork, duration / position, app / session activity
-- Remotes delivered to JS via `registerPlaybackService` (**T5**; T4 uses native Play/Pause/Stop defaults)
+- Remotes delivered to JS via `registerPlaybackService` (**T5**)
 - `updateOptions` re-applied after `reset()` so remotes / notification config stay alive
 
 ## Config plugin (T2 — done)
@@ -87,10 +87,36 @@ Apply the same Info.plist / AndroidManifest entries manually:
 - Android: unique-id `MediaSession` attached to `SpeechEngine` ExoPlayer; `PlaybackService` hosts FGS / media notification via Media3 (`onUpdateNotification` / synchronous `startForeground` within OS deadline). No fake bootstrap player. No FGS from `BOOT_COMPLETED`.
 - iOS: `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter` on the shared speech player.
 - Kill policy: `appKilledPlaybackBehavior` — `ContinuePlayback` (Bible default) | `PausePlayback` | `StopPlaybackAndRemoveNotification`; `stopForegroundGracePeriod` (default 5s).
-- Remotes (T4): Play / Pause / Stop → native engine. Next / Previous visible when enabled, **no-op** until T5/T6.
+- Remotes (T5): Play / Pause / Stop / Next / Previous → **emit-only** to JS (`registerPlaybackService`). Scrubber seek stays native. Headless task key `DailyReactNativePlayer`.
 - `reset()` clears source + now-playing display; keeps session, remotes, and persisted options.
 
 See ownership / kill matrix in [`architecture.md`](./architecture.md).
+
+## T5 remote → JS
+
+Hosts **must** register a playback service at entry (before root component):
+
+```ts
+import { registerPlaybackService, Event, addEventListener, play, pause } from 'daily-react-native-player';
+
+registerPlaybackService(() => async () => {
+  addEventListener(Event.RemotePlay, () => { void play(); });
+  addEventListener(Event.RemotePause, () => { void pause(); });
+  // …
+});
+```
+
+Not `expo-background-task`. See [`api.md`](./api.md).
+
+### Device QA (T5 additions)
+
+| Case | Android Pixel | Android OEM | iOS |
+| --- | --- | --- | --- |
+| Remotes → JS while backgrounded | | | |
+| One tap → one JS transport action | | | |
+| UI play does not emit Remote* | | | |
+| Headless task finish leaves FGS alive | | | N/A |
+| Missing registration (`__DEV__` warn) | | | |
 
 ## Device QA matrix (T4)
 

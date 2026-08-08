@@ -24,10 +24,12 @@ class PlaybackService : MediaSessionService() {
     super.onCreate()
     setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build())
     SessionHolder.onServiceCreated(this)
+    HeadlessPlaybackBootstrap.ensureStarted(this)
     Log.i(TAG, "onCreate")
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    HeadlessPlaybackBootstrap.ensureStarted(this)
     // Re-register if session already exists (service restart / late start).
     SessionHolder.getSession()?.let { session ->
       try {

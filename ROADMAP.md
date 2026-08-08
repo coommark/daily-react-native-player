@@ -25,7 +25,7 @@ Acceptance surface: [`docs/bible-acceptance.md`](./docs/bible-acceptance.md).
 | T2 | P0 | Config plugin: iOS audio BG + Android FGS / MediaSessionService | done |
 | T3 | — | Progressive formats (WAV, mp3/m4a, platform codecs) + play / pause / seek | done |
 | T4 | P0 | MediaSession + Now Playing + remotes + metadata + ContinuePlayback | code complete — **device QA required** before done |
-| T5 | P0 | `registerPlaybackService` + remote → JS bridge | pending |
+| T5 | P0 | `registerPlaybackService` + remote → JS bridge | done — **device QA** for remotes→JS recommended with T4 matrix |
 | T6 | P1 | Queue API + events (Bible matrix) | pending |
 | T7 | P1 | Native silence tracks | pending |
 | T8 | P1 | Progressive queue mutation + `setRate` + reset → reapply options | pending |

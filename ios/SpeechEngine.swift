@@ -47,6 +47,7 @@ final class SpeechEngine {
     if let kill = options["appKilledPlaybackBehavior"] as? String {
       killBehavior = kill
     }
+    // autoHandleInterruptions applied in NowPlayingController for RemoteDuck
   }
 
   func add(urlString: String, metadata: [String: Any]? = nil) throws {
@@ -204,10 +205,15 @@ final class SpeechEngine {
   }
 
   func releaseIfAllowed() {
-    if killBehavior == "continue-playback" && fgsProxyActive && playWhenReadyFlag {
+    if shouldKeepAliveOnModuleDestroy() {
       return
     }
     releaseEngine()
+  }
+
+  /// ContinuePlayback while "FGS proxy" + play-when-ready — keep engine (and remotes hub).
+  func shouldKeepAliveOnModuleDestroy() -> Bool {
+    return killBehavior == "continue-playback" && fgsProxyActive && playWhenReadyFlag
   }
 
   func releaseEngine() {

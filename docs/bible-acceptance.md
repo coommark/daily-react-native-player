@@ -7,7 +7,7 @@ Keep contract tests aligned with this list.
 
 ## Lifecycle
 
-- [ ] `registerPlaybackService`
+- [x] `registerPlaybackService`
 - [x] `setupPlayer` (idempotent; treat already-initialized as success)
 - [x] `updateOptions`
 - [x] `reset` then re-apply options (remotes / notification) — options persist across `reset`; re-`updateOptions` also supported
@@ -41,8 +41,8 @@ Keep contract tests aligned with this list.
 - [ ] `PlaybackError`
 - [ ] `PlaybackProgressUpdated` (~1s interval configurable)
 - [ ] `PlaybackPlayWhenReadyChanged`
-- [ ] `RemoteDuck`
-- [ ] `RemotePlay` / `RemotePause` / `RemotePlayPause` / `RemoteStop` / `RemoteNext` / `RemotePrevious`
+- [x] `RemoteDuck`
+- [x] `RemotePlay` / `RemotePause` / `RemotePlayPause` / `RemoteStop` / `RemoteNext` / `RemotePrevious`
 
 ## Setup options used by Bible
 
@@ -53,7 +53,7 @@ Keep contract tests aligned with this list.
 - [ ] `androidAudioMixMode: 'default' | 'duckOthers'`
 - [x] iOS Playback + SpokenAudio + DuckOthers + Bluetooth + AirPlay — Playback/SpokenAudio/BT/AirPlay from T3; DuckOthers = T10 mix
 - [ ] Buffer knobs
-- [x] `autoHandleInterruptions: false` — stored; no auto-resume in T4
+- [x] `autoHandleInterruptions: false` — emit `remote-duck` only; no auto pause/resume when false
 - [x] `autoUpdateMetadata: true`
 
 ## Sources

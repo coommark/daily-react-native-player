@@ -40,7 +40,7 @@ example app → JS Player / Silence / Ambient(opt) → Expo Module
 - **JS:** imperative Player API (named exports), silence helpers (T7), optional ambient facade (T10)
 - **Config plugin (T2):** plugin-owned iOS `UIBackgroundModes: audio` + Android FGS permissions + `PlaybackService` declaration in the *app* manifest (`createRunOncePlugin`, `enableBackgroundPlayback` escape hatch). Library AAR owns the Kotlin `PlaybackService` class and pinned Media3 deps; library manifest stays free of FGS/service.
 - **Native (T3 + T4):** process-scoped `SpeechEngine` owns the speech player (Android ExoPlayer Media3 **1.8.0**, iOS AVPlayer). Mutations are serialized (Android player looper / main; iOS main via AsyncFunction). `reset()` clears source + now-playing display only. Dual players are forbidden. T4 attaches a unique-id `MediaSession` (Android) and `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` (iOS) to that same player.
-- **Audio policy (T3):** Android `USAGE_MEDIA` + `CONTENT_TYPE_SPEECH`; iOS `AVAudioSession` category `.playback`, mode `.spokenAudio`, Bluetooth/AirPlay options. Mix modes = T10; JS remote events = T5.
+- **Audio policy (T3):** Android `USAGE_MEDIA` + `CONTENT_TYPE_SPEECH`; iOS `AVAudioSession` category `.playback`, mode `.spokenAudio`, Bluetooth/AirPlay options. Mix modes = T10. Android audio focus owned by `SpeechEngine` (emit `remote-duck`); JS remote events = T5.
 
 ## T4 ownership (binding)
 
@@ -74,8 +74,10 @@ When idle / not FGS-active, `OnDestroy` releases as before (T3 behavior).
 
 ### Remote policy (T4 vs T5)
 
-- **T4:** Play / Pause / Stop execute natively on `SpeechEngine`. Next / Previous may be visible when capabilities enable them but are **no-op** until queue (T6) + JS bridge (T5).
-- **T5:** `registerPlaybackService` + `Remote*` events; command router seam switches to JS policy (Bible verse Next/Previous). Avoid double-handling.
+- **T5 (current):** Play / Pause / Stop / Next / Previous remotes are **emit-only** → JS via `registerPlaybackService` + `Event.Remote*`. Seek scrubber stays native. Fail-closed if no JS service (no native surprise play).
+- Android headless task key: **`DailyReactNativePlayer`** (`HEADLESS_TASK_NAME`). Embedded in `PlaybackService`; task finish must **not** stop the FGS.
+- Do **not** tear down remotes when the last JS UI listener detaches (`OnStopObserving`).
+- Internal JS `play()` / `pause()` use the raw engine — never re-emit as Remote*.
 
 ### Ambient invariant (T10)
 

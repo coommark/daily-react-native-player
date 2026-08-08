@@ -8,7 +8,7 @@ Primary host: [Daily Bible - Offline & Audio](https://dailybiblenow.com)
 
 **Peers:** Expo SDK 57+ (Expo Modules Core required), React Native 0.86+, New Architecture only. Web transport is unsupported. Hosts on Expo &lt;57 must upgrade the app before adopting this package.
 
-## Implemented (T3 + T4)
+## Implemented (T3 + T4 + T5)
 
 ```ts
 import {
@@ -26,6 +26,10 @@ import {
   setPlayWhenReady,
   reset,
   getPlayerOptions,
+  registerPlaybackService,
+  addEventListener,
+  Event,
+  HEADLESS_TASK_NAME,
   Capability,
   AppKilledPlaybackBehavior,
   State,
@@ -34,6 +38,29 @@ import {
 } from 'daily-react-native-player';
 ```
 
+### Bootstrap (required for remotes)
+
+Call **once** at the app entry file — **before** `registerRootComponent` / `AppRegistry.registerComponent`. Do **not** register inside `useEffect`.
+
+```ts
+// index.ts
+import { registerPlaybackService } from 'daily-react-native-player';
+import { registerRootComponent } from 'expo';
+import App from './App';
+import { playbackService } from './playbackService';
+
+registerPlaybackService(() => playbackService);
+registerRootComponent(App);
+```
+
+| Constant / method | Behavior |
+| --- | --- |
+| `HEADLESS_TASK_NAME` | `'DailyReactNativePlayer'` — Android headless task key (must not collide) |
+| `registerPlaybackService(factory)` | Android: `AppRegistry.registerHeadlessTask`; iOS: `setImmediate` runs handler; web: no-op. Idempotent. |
+| `addEventListener(event, listener)` | Subscribe to Remote* events; returns `{ remove }`. Prefer from the playback service. |
+
+This is **not** `expo-background-task` / TaskManager — those are for periodic fetch, not lock-screen remotes.
+
 | Method | Behavior |
 | --- | --- |
 | `setupPlayer(options?)` | Idempotent. Creates the native speech engine, applies options, attaches MediaSession / Now Playing when background playback is available. |
@@ -41,7 +68,7 @@ import {
 | `add(track \| track[])` | **Single active source:** first track only. Forwards `{ url, title?, artist?, album?, artwork? }` when `autoUpdateMetadata` is true. |
 | `updateNowPlayingMetadata(partial)` | **Forced** lock-screen / notification metadata override (wins over track fields). |
 | `updateMetadataForTrack(index, partial)` | Index `0` only until T6. |
-| `play()` / `pause()` | Transport; map to play-when-ready. `play` rejects `no_source`. |
+| `play()` / `pause()` | Transport; map to play-when-ready. `play` rejects `no_source`. Internal path — does **not** emit Remote*. |
 | `seekTo(seconds)` | Absolute position in **seconds** (≥ 0). |
 | `getProgress()` | `{ position, duration, buffered }` in seconds. |
 | `getPlaybackState()` | `none` \| `loading` \| `ready` \| `playing` \| `paused` \| `ended` \| `error` |
@@ -56,13 +83,25 @@ import {
 | `autoUpdateMetadata` | `true` |
 | `appKilledPlaybackBehavior` | `ContinuePlayback` (`continue-playback`) |
 | `stopForegroundGracePeriod` | `5` (seconds) |
-| `autoHandleInterruptions` | `false` (stored; auto-resume not applied in T4) |
+| `autoHandleInterruptions` | `false` (emit `remote-duck` only; no auto pause/resume) |
 
-### Remote policy (T4)
+### Remote policy (T5)
 
-- **Play / Pause / Stop:** native → speech engine (Stop = pause + clear play-when-ready; does not clear source).
-- **Next / Previous:** may appear when capabilities enable them; **no-op** until T5/T6.
-- JS `Remote*` events + `registerPlaybackService` = **T5**.
+**Emit-only (fail-closed):** lock-screen / notification / headset remotes emit JS events. They do **not** call native transport. Your playback service must call `play()` / `pause()` (and later skip APIs).
+
+| Event (`Event.*`) | Wire name | Typical handler |
+| --- | --- | --- |
+| `RemotePlay` | `remote-play` | `play()` |
+| `RemotePause` | `remote-pause` | `pause()` |
+| `RemotePlayPause` | `remote-play-pause` | toggle via `getPlayWhenReady` (iOS toggle) |
+| `RemoteStop` | `remote-stop` | usually `pause()` (does not clear source) |
+| `RemoteNext` | `remote-next` | host policy (verse/chapter); no native skip until T6 |
+| `RemotePrevious` | `remote-previous` | host policy |
+| `RemoteDuck` | `remote-duck` | `{ paused: boolean, permanent: boolean }` |
+
+**Seek scrubber** stays **native** (no `RemoteSeek` in v0.1).
+
+If you forget `registerPlaybackService`, remotes emit into empty JS (no surprise native play). In `__DEV__`, native may log missing listeners.
 
 ### Metadata precedence
 
@@ -104,4 +143,4 @@ Call `setupPlayer()` before transport (`reset` is the exception). New Architectu
 
 ## Not yet implemented
 
-`registerPlaybackService` / Remote* events (T5), queue (T6), silence (T7), rate / mutation (T8), HLS (T9), ambient (T10) — see [`bible-acceptance.md`](./bible-acceptance.md) and [`ROADMAP.md`](../ROADMAP.md).
+Queue (T6), silence (T7), rate / mutation (T8), HLS (T9), ambient (T10) — see [`bible-acceptance.md`](./bible-acceptance.md) and [`ROADMAP.md`](../ROADMAP.md).
