@@ -342,7 +342,8 @@ object SpeechEngine {
         tracks.map { raw ->
           parseQueueTrack(raw)
         }
-      queueEpoch++
+      // Do not bump queueEpoch on append/insert — active media is unchanged.
+      // Epoch invalidates progress timers; bump only on active-media replace / reset.
       lastErrorCode = null
       queue.addAll(insertAt, entries)
       if (activeIndex >= insertAt && !wasEmpty) {
@@ -351,8 +352,6 @@ object SpeechEngine {
       val indices = (insertAt until insertAt + entries.size).toList()
       if (wasEmpty) {
         activateIndexLocked(0, emitActive = true)
-      } else if (activeIndex >= insertAt && activeIndex < insertAt + entries.size) {
-        // inserted before/at active — index already adjusted
       }
       indices
     }
@@ -374,7 +373,6 @@ object SpeechEngine {
       val removingActive = activeIndex in unique
       val last = activeTrackOrNull()
       val lastIdx = if (activeIndex >= 0) activeIndex else null
-      queueEpoch++
       for (i in sorted) {
         queue.removeAt(i)
         if (i < activeIndex) {
@@ -400,6 +398,7 @@ object SpeechEngine {
           }
         activateIndexLocked(next, emitActive = true, lastIndex = lastIdx, lastTrack = last)
       } else if (activeIndex >= 0) {
+        // Same active media; index may have shifted. No epoch bump / no re-activate.
         emitActiveTrackChangedLocked(activeIndex, activeTrackOrNull(), lastIdx, last)
       }
     }
@@ -441,7 +440,6 @@ object SpeechEngine {
       }
       val last = activeTrackOrNull()
       val lastIdx = if (activeIndex >= 0) activeIndex else null
-      queueEpoch++
       activateIndexLocked(index, emitActive = true, lastIndex = lastIdx, lastTrack = last)
     }
   }
@@ -486,8 +484,11 @@ object SpeechEngine {
         track.artwork = metadata["artwork"] as? String
       }
       if (index == activeIndex && autoUpdateMetadata) {
-        // Silence: re-bind via SilenceMediaSource (never URI setMediaItem with silence:).
-        applyTrackToPlayerLocked(track, preservePosition = true)
+        // Metadata-only: never rebind/prepare (that restarts the first syllable of speech).
+        patchActiveMediaMetadataFromTrackLocked(track)
+        if (!track.isSilence && !track.artwork.isNullOrBlank()) {
+          loadArtworkAsync(track.artwork!!, track.id)
+        }
       }
     }
   }
@@ -500,16 +501,13 @@ object SpeechEngine {
         return@runOnMainBlocking
       }
       val active = activeTrackOrNull()
-      if (active != null && active.isSilence) {
+      if (active != null) {
         (metadata["title"] as? String)?.let { active.title = it }
         (metadata["artist"] as? String)?.let { active.artist = it }
         (metadata["album"] as? String)?.let { active.album = it }
         if (metadata.containsKey("artwork")) {
           active.artwork = metadata["artwork"] as? String
         }
-        // Rebuild silence source with updated metadata — do not setMediaItem(silence: URI).
-        applyTrackToPlayerLocked(active, preservePosition = true)
-        return@runOnMainBlocking
       }
       val current = exo.currentMediaItem ?: return@runOnMainBlocking
       val metaBuilder = current.mediaMetadata.buildUpon()
@@ -526,20 +524,8 @@ object SpeechEngine {
           loadArtworkAsync(artwork, activeTrackOrNull()?.id)
         }
       }
-      val updated =
-        current.buildUpon()
-          .setMediaMetadata(metaBuilder.build())
-          .build()
-      val position = exo.currentPosition
-      val playWhenReady = exo.playWhenReady
-      val epoch = queueEpoch
-      val trackId = activeTrackOrNull()?.id
-      exo.setMediaItem(updated, position)
-      exo.prepare()
-      exo.playWhenReady = playWhenReady
-      if (epoch != queueEpoch || trackId != activeTrackOrNull()?.id) {
-        return@runOnMainBlocking
-      }
+      // replaceMediaItem keeps playback continuous; setMediaItem+prepare stuttered verse starts.
+      patchActiveMediaMetadataLocked(metaBuilder.build())
     }
   }
 
@@ -655,12 +641,11 @@ object SpeechEngine {
   fun setPlayWhenReady(value: Boolean) {
     ensureInitialized()
     runOnMainBlocking {
-      if (value && !hasSource) {
-        throw CodedException("no_source", "No media source loaded", null)
-      }
+      // Play-intent may be armed before the first track is added (progressive TTS).
+      // `play()` still requires a source; ExoPlayer honors playWhenReady once media loads.
       requirePlayer().playWhenReady = value
       emitPlayWhenReadyIfChangedLocked(value)
-      if (value) {
+      if (value && hasSource) {
         appContext?.let { SessionHolder.onPlaybackStarted(it) }
       }
       emitStateIfChangedLocked()
@@ -743,6 +728,8 @@ object SpeechEngine {
     lastTrack: QueueTrack? = activeTrackOrNull(),
   ) {
     val track = queue.getOrNull(index) ?: return
+    // Invalidate stale progress/artwork/end callbacks for the previous item only.
+    queueEpoch++
     activeIndex = index
     lastErrorCode = null
     pendingSeekSeconds = null
@@ -754,6 +741,37 @@ object SpeechEngine {
     }
     emitStateIfChangedLocked()
     refreshProgressTimerLocked()
+  }
+
+  /**
+   * Patch MediaItem metadata without rebinding the source.
+   * Calling [ExoPlayer.setMediaItem] + [ExoPlayer.prepare] here restarts audible speech
+   * (Bible host syncs Now Playing on every verse → “In in the beginning”).
+   */
+  private fun patchActiveMediaMetadataLocked(metadata: MediaMetadata) {
+    val exo = player ?: return
+    if (!hasSource) return
+    val current = exo.currentMediaItem ?: return
+    val index = exo.currentMediaItemIndex
+    if (index < 0) return
+    val updated = current.buildUpon().setMediaMetadata(metadata).build()
+    exo.replaceMediaItem(index, updated)
+  }
+
+  private fun patchActiveMediaMetadataFromTrackLocked(track: QueueTrack) {
+    val exo = player ?: return
+    val current = exo.currentMediaItem ?: return
+    val metaBuilder = current.mediaMetadata.buildUpon()
+    track.title?.let { metaBuilder.setTitle(it) }
+    track.artist?.let { metaBuilder.setArtist(it) }
+    track.album?.let { metaBuilder.setAlbumTitle(it) }
+    val artwork = track.artwork
+    if (artwork.isNullOrBlank()) {
+      metaBuilder.setArtworkUri(null)
+    } else {
+      metaBuilder.setArtworkUri(Uri.parse(artwork))
+    }
+    patchActiveMediaMetadataLocked(metaBuilder.build())
   }
 
   private fun applyTrackToPlayerLocked(track: QueueTrack, preservePosition: Boolean) {
@@ -905,7 +923,6 @@ object SpeechEngine {
       val last = activeTrackOrNull()
       val lastIdx = activeIndex
       val pwr = player?.playWhenReady ?: false
-      queueEpoch++
       activateIndexLocked(activeIndex + 1, emitActive = true, lastIndex = lastIdx, lastTrack = last)
       player?.playWhenReady = pwr
       if (pwr) {
@@ -952,6 +969,7 @@ object SpeechEngine {
 
   private fun clearPlayerLocked() {
     val exo = player ?: return
+    queueEpoch++
     exo.playWhenReady = false
     exo.pause()
     exo.stop()
@@ -1054,12 +1072,14 @@ object SpeechEngine {
             return
           }
           val progress = getProgressUnlocked()
+          val trackIndex = if (activeIndex >= 0) activeIndex else null
           RemoteEventHub.emit(
             RemoteEventHub.PLAYBACK_PROGRESS_UPDATED,
             bundleOf(
               "position" to progress["position"],
               "duration" to progress["duration"],
               "buffered" to progress["buffered"],
+              "track" to trackIndex,
             ),
           )
           progressRunnable = this
@@ -1101,24 +1121,18 @@ object SpeechEngine {
             if (trackId != null && activeTrackOrNull()?.id != trackId) {
               return@post
             }
-            // Never setMediaItem while silence is active (would tear down SilenceMediaSource).
+            // Never rebind while silence (or speech) is active — metadata-only patch.
             if (activeTrackOrNull()?.isSilence == true) {
               return@post
             }
-            val exo = player ?: return@post
-            val current = exo.currentMediaItem ?: return@post
+            val current = player?.currentMediaItem ?: return@post
             val bytes = ArtworkLoader.toJpegBytes(bitmap) ?: return@post
             val meta =
               current.mediaMetadata
                 .buildUpon()
                 .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
                 .build()
-            val updated = current.buildUpon().setMediaMetadata(meta).build()
-            val position = exo.currentPosition
-            val pwr = exo.playWhenReady
-            exo.setMediaItem(updated, position)
-            exo.prepare()
-            exo.playWhenReady = pwr
+            patchActiveMediaMetadataLocked(meta)
           }
         } catch (e: Exception) {
           log("artwork load failed: ${e.message}")

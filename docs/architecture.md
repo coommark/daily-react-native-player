@@ -52,7 +52,7 @@ Assign `id` on enqueue if omitted. Android `MediaItem.mediaId` and iOS side-tabl
 
 ### ADR-14 — Mutation lane + queueEpoch (T6)
 
-All `add` / `remove` / `skip*` / `reset` / metadata-for-track run on the serial main/player path. Bump `queueEpoch` on structural change and `reset`; discard stale artwork/timer/end callbacks.
+All `add` / `remove` / `skip*` / `reset` / metadata-for-track run on the serial main/player path. Bump `queueEpoch` only when **active media is replaced** (`activateIndex`) or the player is cleared / `reset` — not on progressive append or remove of future items. Progress observers capture the epoch so stale callbacks after a real track change are discarded, while contemplative pause-track appends never starve `PlaybackProgressUpdated`.
 
 ### ADR-15 — MediaSession single-item honesty (T6)
 
@@ -117,6 +117,14 @@ When idle / not FGS-active, `OnDestroy` releases as before (T3 behavior).
 ### Ambient invariant (T10)
 
 Speech owns the sole MediaSession / Now Playing. Ambient never requests focus and never owns lock-screen metadata. Lazy `AmbientEngine` (second ExoPlayer / AVPlayer) created only on first ambient API. See ADR-18 and [`dual-audio.md`](./dual-audio.md).
+
+### ADR-19 — Metadata updates must not rebind playback (Bible integration)
+
+Hosts (Daily Bible) sync Now Playing on every `PlaybackActiveTrackChanged`. On Android, implementing that with `setMediaItem` + `prepare` restarts the active item at ~0–200 ms and stutters the first syllables of speech (“In in the beginning”). **Metadata-only** updates use Media3 `replaceMediaItem` (no prepare). iOS already patches `MPNowPlayingInfoCenter` without replacing the `AVPlayerItem`. Artwork bitmap apply follows the same rule.
+
+### ADR-20 — Progressive play-intent before first source (Bible integration)
+
+Offline TTS builds the queue progressively. Hosts may call `setPlayWhenReady(true)` before the first `add`. Native stores the flag and honors it on first `activateIndex`; `play()` still requires a source (`no_source`).
 
 Host-facing runtime SLAs (timeouts, idempotency, remotes fail-closed, stop/reset, FGS): [`contracts.md`](./contracts.md).
 

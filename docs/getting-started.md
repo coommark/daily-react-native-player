@@ -85,7 +85,7 @@ await play();
 
 await seekTo(10);
 const { position, duration } = await getProgress();
-const state = await getPlaybackState();
+const { state } = await getPlaybackState();
 await pause();
 await reset();
 ```
@@ -197,6 +197,19 @@ Emulator audio fidelity is non-authoritative for P0 background QA. See the devic
 **CI:** Build → typecheck (src + plugin) → lint → tests → plugin tests → pack:check → example `assembleRelease` (R8).
 
 Host SLAs: [`contracts.md`](./contracts.md). Recommended Stop: `pause()` then `reset()`.
+
+## Host integration notes (Daily Bible)
+
+Lessons from wiring this package into [Daily Bible](https://dailybiblenow.com) as a `file:` / workspace consumer:
+
+| Topic | Guidance |
+| --- | --- |
+| **API shape** | Prefer named exports. `getPlaybackState()` → `{ state }`. Progress events include `track` (active index). `State.Buffering` / `State.Stopped` are aliases of `loading` / `none`. `TrackType` is a const object (`Default` / `HLS` / `Silence`). |
+| **Progressive TTS** | Arm `setPlayWhenReady(true)` before the first `add` if the host starts play intent while synthesizing; call `play()` once a track exists if needed. |
+| **Contemplative pauses** | Append `createSilenceTrack({ durationMs })` while speech plays. Native does **not** bump `queueEpoch` on append (would starve progress). iOS silence WAVs are **prewarmed** async on add; ensure-on-activate stays sync. |
+| **Now Playing sync** | Safe to call `updateMetadataForTrack` / `updateNowPlayingMetadata` on every verse — Android patches metadata without rebinding (ADR-19). |
+| **Local Expo link** | Nested `node_modules/expo` inside a `file:` player can break iOS pods. Prefer the host’s Expo modules (Bible uses a postinstall that strips nested native Expo and symlinks host `expo` / `@expo/config-plugins`). |
+| **Config plugin** | Keep `"daily-react-native-player"` in the host `app.json` plugins list and prebuild after upgrades. |
 
 ## Next
 

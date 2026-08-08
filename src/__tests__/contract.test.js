@@ -155,6 +155,9 @@ describe('daily-react-native-player contract', () => {
     expect(api.Capability.Play).toBe('play');
     expect(api.AppKilledPlaybackBehavior.ContinuePlayback).toBe('continue-playback');
     expect(api.State.Playing).toBe('playing');
+    expect(api.State.Buffering).toBe('loading');
+    expect(api.State.Stopped).toBe('none');
+    expect(api.TrackType.HLS).toBe('hls');
     expect(api.PlayerErrorCode.NoSource).toBe('no_source');
     expect(api.PlayerErrorCode.SetupTimeout).toBe('setup_timeout');
   });

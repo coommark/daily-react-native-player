@@ -90,8 +90,8 @@ registerRootComponent(App);
 | `seekTo(seconds)` | Absolute position in **seconds** (≥ 0). |
 | `setRate(rate)` | Playback rate in **`[0.25, 4.0]`** (engine safety). Hosts clamp product UX (e.g. 0.75–1.0). Pitch-preserving. While a silence track is active, native applies effective **1.0** without clearing the desired rate; leaving silence restores it. `reset()` restores desired rate to **1.0**. |
 | `getProgress()` | `{ position, duration, buffered }` in seconds. |
-| `getPlaybackState()` | `none` \| `loading` \| `ready` \| `playing` \| `paused` \| `ended` \| `error` |
-| `getPlayWhenReady()` / `setPlayWhenReady(bool)` | Play intent. |
+| `getPlaybackState()` | `{ state }` where `state` is `none` \| `loading` \| `ready` \| `playing` \| `paused` \| `ended` \| `error`. |
+| `getPlayWhenReady()` / `setPlayWhenReady(bool)` | Play intent. May be armed **before** the first `add` (progressive queues); first activate honors the flag. `play()` still rejects `no_source`. |
 | `reset()` | Clears **entire queue** + now-playing display; retains engine, session, remotes, and options. |
 
 ## Queue (T6)
@@ -127,6 +127,8 @@ await add({ url: c, title: '3' });
 | `updateMetadataForTrack(index, partial)` | Any in-range queue index. |
 
 Precedence: forced overlay → track fields when `autoUpdateMetadata` → file tags.
+
+**Android:** metadata updates patch the active `MediaItem` via `replaceMediaItem` and must **not** rebind with `setMediaItem` + `prepare` (that restarts the first syllables of speech when hosts sync Now Playing on every verse). iOS already updates Now Playing only without replacing the AV player item.
 
 ### Options defaults
 
@@ -168,7 +170,7 @@ Drive playlist UI without polling. Always emitted while the engine is alive (exc
 | `PlaybackState` | `playback-state` | `{ state }` |
 | `PlaybackQueueEnded` | `playback-queue-ended` | `{ track, index, position }` |
 | `PlaybackError` | `playback-error` | `{ code, message, trackId?, index? }` |
-| `PlaybackProgressUpdated` | `playback-progress-updated` | `{ position, duration, buffered }` |
+| `PlaybackProgressUpdated` | `playback-progress-updated` | `{ position, duration, buffered, track }` — `track` is active queue index or `null` |
 | `PlaybackPlayWhenReadyChanged` | `playback-play-when-ready-changed` | `{ playWhenReady }` |
 
 **Progress:** timer runs only when `progressUpdateEventInterval > 0`, state is `playing`, and at least one JS listener is subscribed (`OnStartObserving` / `OnStopObserving`).

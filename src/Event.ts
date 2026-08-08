@@ -64,7 +64,10 @@ export type PlaybackErrorEvent = {
 };
 
 /** Payload for {@link Event.PlaybackProgressUpdated}. */
-export type PlaybackProgressUpdatedEvent = Progress;
+export type PlaybackProgressUpdatedEvent = Progress & {
+  /** Active queue index, or `null` when none. */
+  track: number | null;
+};
 
 /** Payload for {@link Event.PlaybackPlayWhenReadyChanged}. */
 export type PlaybackPlayWhenReadyChangedEvent = {

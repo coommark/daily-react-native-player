@@ -172,14 +172,14 @@ export default function App() {
     const id = setInterval(() => {
       void (async () => {
         try {
-          const [nextState, nextProgress, q, idx, track] = await Promise.all([
+          const [playback, nextProgress, q, idx, track] = await Promise.all([
             getPlaybackState(),
             getProgress(),
             getQueue(),
             getActiveTrackIndex(),
             getActiveTrack(),
           ]);
-          setState(nextState);
+          setState(playback.state);
           setProgress(nextProgress);
           setQueueLen(q.length);
           setActiveIndex(idx);

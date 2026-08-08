@@ -9,11 +9,14 @@ import {
   type PlayerOptions,
   type PlayerOptionsInput,
 } from './Options';
-import type { Progress, Track, TrackType } from './Track';
+import type { PlaybackState } from './State';
+import type { Progress, Track, TrackTypeValue } from './Track';
 import { canonicalizeSilence } from './createSilenceTrack';
 import { PlayerErrorCode, PlayerException } from './errors';
 import { normalizeTrackUrl } from './normalizeTrackUrl';
 
+/** Result of {@link getPlaybackState}. */
+export type PlaybackStateResult = { state: PlaybackState };
 /** Persisted options survive reset() (Bible contract). */
 let persistedOptions: PlayerOptions = {
   ...DEFAULT_PLAYER_OPTIONS,
@@ -100,7 +103,7 @@ function validateTrack(track: Track): { url: string; payload: Record<string, unk
     throw new PlayerException(PlayerErrorCode.UnsupportedUrl, 'content:// urls are Android-only');
   }
 
-  let type: TrackType | undefined =
+  let type: TrackTypeValue | undefined =
     track.type === 'hls' || track.type === 'default' ? track.type : undefined;
   if (!type && looksLikeHlsUrl(url)) {
     type = 'hls';
@@ -150,7 +153,7 @@ function normalizeTrackFromNative(
 
   const rawType = raw.type;
   if (rawType === 'silence' || rawType === 'hls' || rawType === 'default') {
-    track.type = rawType as TrackType;
+    track.type = rawType as TrackTypeValue;
   }
 
   if (typeof raw.durationMs === 'number' && Number.isFinite(raw.durationMs) && raw.durationMs > 0) {
@@ -459,9 +462,10 @@ export async function getProgress(): Promise<Progress> {
   }
 }
 
-export async function getPlaybackState(): Promise<string> {
+export async function getPlaybackState(): Promise<PlaybackStateResult> {
   try {
-    return await ensureNative().getPlaybackState();
+    const state = await ensureNative().getPlaybackState();
+    return { state: state as PlaybackState };
   } catch (e) {
     rethrowNative(e);
   }

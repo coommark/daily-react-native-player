@@ -76,6 +76,8 @@ See the example app **John 1 + silence + John 2** button.
 | Android | Media3 `SilenceMediaSource` (no dummy progressive file); `MediaItem.mediaId` = track id |
 | iOS | Cached PCM WAV **22050 Hz, mono, 16-bit** under app Caches |
 
+On **add**, iOS **prewarms** silence WAVs asynchronously so progressive append (e.g. Contemplative pause tracks mid-chapter) does not block the player lane. Activation still **ensures** the file synchronously if the cache missed. Android needs no file materialize.
+
 No host filesystem dependency. iOS Caches may be purged by the OS; the module regenerates on demand.
 
 ## Limits & acceptance

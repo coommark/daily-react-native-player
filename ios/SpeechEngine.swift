@@ -154,13 +154,16 @@ final class SpeechEngine {
     var entries: [QueueTrack] = []
     for raw in tracks {
       let entry = try parseQueueTrack(raw)
+      // Do not sync-materialize silence here — that blocks the player lane while a
+      // verse is playing (progressive append / contemplative pause tracks).
+      // `activateIndex` ensures the WAV when that item becomes active; prewarm async.
       if entry.isSilence, let durationMs = entry.durationMs {
-        // Ensure-at-add so activate is usually a cache hit (IO on serial queue).
-        _ = try SilenceWavCache.ensure(durationMs: durationMs)
+        SilenceWavCache.prewarm(durationMs: durationMs)
       }
       entries.append(entry)
     }
-    queueEpoch += 1
+    // Do not bump queueEpoch on append/insert: the active AVPlayerItem is unchanged.
+    // Epoch is for discarding stale callbacks after active-media replacement / reset.
     lastErrorCode = nil
     queue.insert(contentsOf: entries, at: insertAt)
     if activeIndex >= insertAt && !wasEmpty {
@@ -186,7 +189,6 @@ final class SpeechEngine {
     let removingActive = unique.contains(activeIndex)
     let last = activeTrackOrNil()
     let lastIdx: Int? = activeIndex >= 0 ? activeIndex : nil
-    queueEpoch += 1
     for i in sorted {
       queue.remove(at: i)
       if i < activeIndex {
@@ -215,6 +217,7 @@ final class SpeechEngine {
       }
       try activateIndex(next, emitActive: true, lastIndex: lastIdx, lastTrack: last)
     } else if activeIndex >= 0 {
+      // Same active media; index may have shifted. No epoch bump / no re-activate.
       emitActiveTrackChanged(index: activeIndex, track: activeTrackOrNil(), lastIndex: lastIdx, lastTrack: last)
     }
   }
@@ -245,7 +248,6 @@ final class SpeechEngine {
     }
     let last = activeTrackOrNil()
     let lastIdx: Int? = activeIndex >= 0 ? activeIndex : nil
-    queueEpoch += 1
     try activateIndex(index, emitActive: true, lastIndex: lastIdx, lastTrack: last)
   }
 
@@ -399,16 +401,17 @@ final class SpeechEngine {
 
   func setPlayWhenReady(_ value: Bool) throws {
     try ensureInitialized()
-    if value && !hasSource {
-      throw Exception(name: "no_source", description: "No media source loaded", code: "no_source")
-    }
+    // Play-intent may be armed before the first track is added (progressive TTS).
+    // `play()` still requires a source; `add` → activateIndex honors this flag.
     playWhenReadyFlag = value
     emitPlayWhenReadyIfChanged(value)
     if value {
-      try activateAudioSession()
-      player?.play()
-      applyEffectiveRate()
-      fgsProxyActive = true
+      if hasSource {
+        try activateAudioSession()
+        player?.play()
+        applyEffectiveRate()
+        fgsProxyActive = true
+      }
     } else {
       player?.pause()
     }
@@ -498,6 +501,8 @@ final class SpeechEngine {
     lastTrack: QueueTrack? = nil
   ) throws {
     guard index >= 0, index < queue.count else { return }
+    // Invalidate stale progress/artwork/end callbacks for the previous item only.
+    queueEpoch += 1
     let track = queue[index]
     let mediaURL: URL
     if track.isSilence {
@@ -631,6 +636,7 @@ final class SpeechEngine {
 
   private func clearPlayer() {
     tearDownItemObservers()
+    queueEpoch += 1
     player?.pause()
     player?.replaceCurrentItem(with: nil)
     playerItem = nil
@@ -655,7 +661,6 @@ final class SpeechEngine {
       let last = activeTrackOrNil()
       let lastIdx = activeIndex
       let pwr = playWhenReadyFlag
-      queueEpoch += 1
       do {
         try activateIndex(activeIndex + 1, emitActive: true, lastIndex: lastIdx, lastTrack: last)
         playWhenReadyFlag = pwr
@@ -768,7 +773,17 @@ final class SpeechEngine {
       guard RemoteEventHub.shared.isProgressObserving(), self.progressUpdateEventInterval > 0 else { return }
       guard self.computeState() == "playing" else { return }
       let progress = self.getProgress()
-      RemoteEventHub.shared.emit(.playbackProgressUpdated, body: progress)
+      var body: [String: Any] = [
+        "position": progress["position"] ?? 0,
+        "duration": progress["duration"] ?? 0,
+        "buffered": progress["buffered"] ?? 0,
+      ]
+      if self.activeIndex >= 0 {
+        body["track"] = self.activeIndex
+      } else {
+        body["track"] = NSNull()
+      }
+      RemoteEventHub.shared.emit(.playbackProgressUpdated, body: body)
     }
   }
 

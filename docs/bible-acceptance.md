@@ -34,6 +34,7 @@ Speech **playlist** used for chapter / verse sequences — see [`queue.md`](./qu
 - [x] `updateNowPlayingMetadata`
 - [x] `updateMetadataForTrack` — any in-range index
 - [x] Forced metadata overrides file tags when needed
+- [ ] **Device QA (Android):** after native rebuild, Genesis 1 offline — intro + v1–v3 speak each opening once (no “In in…” / “Gegenesis” stutter); lock-screen title still updates per verse
 
 ## Events
 
@@ -41,7 +42,7 @@ Speech **playlist** used for chapter / verse sequences — see [`queue.md`](./qu
 - [x] `PlaybackState`
 - [x] `PlaybackQueueEnded`
 - [x] `PlaybackError`
-- [x] `PlaybackProgressUpdated` (~1s interval configurable)
+- [x] `PlaybackProgressUpdated` (~1s interval configurable; includes `track` active index)
 - [x] `PlaybackPlayWhenReadyChanged`
 - [x] `RemoteDuck`
 - [x] `RemotePlay` / `RemotePause` / `RemotePlayPause` / `RemoteStop` / `RemoteNext` / `RemotePrevious`

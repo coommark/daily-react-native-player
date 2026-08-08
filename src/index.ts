@@ -34,7 +34,8 @@ export {
 
 export { State } from './State';
 export type { PlaybackState } from './State';
-export type { Track, TrackType, Progress } from './Track';
+export { TrackType } from './Track';
+export type { Track, TrackTypeValue, Progress } from './Track';
 export { createSilenceTrack, isSilenceTrack, MAX_SILENCE_DURATION_MS } from './createSilenceTrack';
 export type { CreateSilenceTrackOptions } from './createSilenceTrack';
 export { Capability, DEFAULT_CAPABILITIES } from './Capability';
@@ -44,6 +45,7 @@ export type { PlayerOptions, PlayerOptionsInput, AppKilledPlaybackBehaviorValue 
 export type { NowPlayingMetadata } from './Metadata';
 export { PlayerErrorCode, PlayerException, isPlayerException } from './errors';
 export type { PlayerError, PlayerErrorCodeValue } from './errors';
+export type { PlaybackStateResult } from './Player';
 
 export {
   Event,

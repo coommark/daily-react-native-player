@@ -38,6 +38,14 @@ enum SilenceWavCache {
     }
   }
 
+  /// Fire-and-forget materialize so progressive `add` of pause tracks cannot block speech.
+  static func prewarm(durationMs: Int) {
+    guard durationMs > 0, durationMs <= maxDurationMs else { return }
+    ioQueue.async {
+      _ = try? ensureLocked(durationMs: durationMs)
+    }
+  }
+
   private static func ensureLocked(durationMs: Int) throws -> URL {
     let fm = FileManager.default
     try fm.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)

@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config plugin for iOS audio background mode + Android FGS / service declaration
 - Runtime contracts: setup coalesce + 10s `setup_timeout`, bounded native main hops, FGS sync promotion, reset play-intent-first
 - Optional `debug` player option for verbose logs
+- `getPlaybackState()` returns `{ state }` (host-compatible)
+- `PlaybackProgressUpdated.track` active queue index (or `null`)
+- `State.Buffering` / `State.Stopped` vocabulary aliases; `TrackType` const (`Default` / `HLS` / `Silence`)
+- `setPlayWhenReady(true)` may be armed before the first `add` (progressive TTS); `play()` still requires a source
+- `queueEpoch` bumps only on active-media replace / reset (not progressive append), so pause-track enqueue cannot starve progress
+- Silence WAV materialize is async-prewarm on add; sync ensure stays on activate
+- Android: `updateMetadataForTrack` / `updateNowPlayingMetadata` / artwork apply use `replaceMediaItem` only (no `setMediaItem`+`prepare`), fixing verse-start stutter when hosts sync Now Playing on every track change
+- Docs: ADR-19/20 + host integration notes from Daily Bible wiring (`getting-started`, `architecture`, `silence-tracks`)
 
 ### Deferred
 
