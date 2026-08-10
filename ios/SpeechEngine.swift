@@ -811,7 +811,11 @@ final class SpeechEngine {
 
   private func configureAudioSession() throws {
     let session = AVAudioSession.sharedInstance()
-    var options: AVAudioSession.CategoryOptions = [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay]
+    // On iOS 26+, explicitly passing allowBluetooth / allowBluetoothA2DP / allowAirPlay
+    // with `.playback` rejects with OSStatus -50 (paramErr). HFP `.allowBluetooth` is
+    // only valid with playAndRecord/record; A2DP/AirPlay routes are automatic for
+    // playback. Only add mix options when ambient ducking is active.
+    var options: AVAudioSession.CategoryOptions = []
     if audioMixMode == "duckOthers", AmbientEngine.shared.hasBeenStarted {
       options.insert(.duckOthers)
     }

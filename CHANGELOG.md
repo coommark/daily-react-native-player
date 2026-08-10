@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] — 2026-08-08
 
+### Fixed
+
+- iOS: `SpeechEngine.configureAudioSession()` no longer passes `.allowBluetooth` /
+  `.allowBluetoothA2DP` / `.allowAirPlay` with category `.playback` (OSStatus -50 /
+  paramErr on iOS 26+). Playback routes stay automatic; only `.duckOthers` is set
+  when ambient ducking is active.
+
 ### Added
 
 - Expo Module (New Architecture only) speech player for Expo SDK **57+** / RN **0.86+**
