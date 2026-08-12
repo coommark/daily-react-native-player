@@ -61,5 +61,7 @@ yarn-error.log
 
 # Agent / local tooling
 .cursor/
+.cursorrules
+local/
 *.canvas.tsx
 prompt.txt

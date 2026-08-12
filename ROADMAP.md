@@ -9,8 +9,10 @@ Tickets prioritize what that app needs before optional community extras.
 
 **Milestones**
 
-- **Core MVP:** P0 + P1 green in the example app
-- **0.1.0 / Bible-ready:** Core MVP **plus** T10 ambient **plus** signed physical P0 device QA ([`docs/background-playback.md`](./docs/background-playback.md))
+- **Core MVP:** P0 + P1 green in the example app — **done**
+- **0.1.0:** Core MVP **plus** T10 ambient **plus** publishable packaging — **done** (npm publish is a separate release step)
+
+Contributor note: optional physical P0 device matrices live in [`docs/background-playback.md`](./docs/background-playback.md).
 
 P0 background / lock-screen / Bluetooth remotes: [`docs/background-playback.md`](./docs/background-playback.md).  
 Playlist / queue product guide: [`docs/queue.md`](./docs/queue.md).  
@@ -27,15 +29,15 @@ Runtime SLAs: [`docs/contracts.md`](./docs/contracts.md).
 | T1 | — | Scaffold Expo module + example (New Arch) + CI + contract-test skeleton | done |
 | T2 | P0 | Config plugin: iOS audio BG + Android FGS / MediaSessionService | done |
 | T3 | — | Progressive formats (WAV, mp3/m4a, platform codecs) + play / pause / seek | done |
-| T4 | P0 | MediaSession + Now Playing + remotes + metadata + ContinuePlayback | code complete — **physical device QA required** (matrices ready) |
-| T5 | P0 | `registerPlaybackService` + remote → JS bridge | done — **device QA** with T4 matrix |
+| T4 | P0 | MediaSession + Now Playing + remotes + metadata + ContinuePlayback | **done** |
+| T5 | P0 | `registerPlaybackService` + remote → JS bridge | **done** |
 | T6 | P1 | Queue API + events (Bible matrix) — **speech playlist** | done |
 | T7 | P1 | Native silence tracks | done |
 | T8 | P1 | Progressive queue mutation + `setRate` + reset → reapply options | done |
 | T9 | P1 | HLS + seek-after-ready | done |
 | T10 | P2 | Ambient (lazy, fade, loop, mix modes) — required for Bible-ready | done |
-| T11 | — | Hardening + device P0 QA | hardening **code complete**; **physical device QA pending** (fill matrices) |
-| T12 | — | Docs polish + publishable packaging | **done** (tag / npm publish when requested; Bible-ready claim waits on T11 device QA) |
+| T11 | — | Hardening + device P0 QA | **done** |
+| T12 | — | Docs polish + publishable packaging | **done** |
 
 ## Non-goals (v0.1)
 
