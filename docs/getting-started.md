@@ -179,7 +179,7 @@ npx expo run:ios
 
 Prefer **Xcode 26.4+** (Expo’s recommended toolchain for SDK 57). Daily Bible (Expo SDK 57) should pin a matching EAS image when building natively.
 
-The example depends on `daily-react-native-player` via `file:..` (npm-consumer style) and lists the config plugin in `app.json`. After prebuild, verify injections with `yarn assert:prebuild` from the repo root.
+The example depends on `daily-react-native-player` via `file:..` (npm-consumer style) and lists the config plugin in `app.json`. After prebuild, verify injections with `yarn assert:prebuild` from the repo root (or `yarn assert:prebuild -- --platform android` after Android-only prebuild, as CI does).
 
 ### T3 / T4 smoke checklist
 

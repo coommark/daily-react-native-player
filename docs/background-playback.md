@@ -170,4 +170,4 @@ Emulator audio is weak signal. Physical Android (Pixel API 34/35 + one OEM) + ph
 
 Mark Pass / Fail / N/A in each cell when QA completes. Fail blocks ROADMAP “done.”
 
-After example `npx expo prebuild`, run `yarn assert:prebuild` from the repo root to verify injected modes / FGS / service / `stopWithTask`.
+After example `npx expo prebuild`, run `yarn assert:prebuild` from the repo root to verify injected modes / FGS / service / `stopWithTask`. For Android-only prebuild (as in CI), use `yarn assert:prebuild -- --platform android`.
