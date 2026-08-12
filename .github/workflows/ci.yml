@@ -54,7 +54,7 @@ jobs:
         working-directory: example
         run: npx expo prebuild --platform android --no-install
       - name: Assert prebuild injections
-        run: yarn assert:prebuild
+        run: yarn assert:prebuild -- --platform android
       - name: Assemble release (R8)
         working-directory: example/android
         run: ./gradlew :app:assembleRelease --no-daemon

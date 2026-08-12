@@ -1,11 +1,15 @@
 # daily-react-native-player
 
-**The Expo-native background audio engine for React Native.**
+**The edge-native background audio engine for Expo — TTS, playlists, HLS, dual-track ambient. MIT.**
 
-**Multi-track speech playlist.** Lock screen, notification & Bluetooth remotes. Now-playing metadata. HLS. Silence gaps. Optional speech + ambient dual-audio.  
-One native owner. New Architecture only. **MIT.**
+[![npm version](https://img.shields.io/npm/v/daily-react-native-player.svg)](https://www.npmjs.com/package/daily-react-native-player)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Expo SDK 57+](https://img.shields.io/badge/Expo-SDK%2057%2B-000020)](https://expo.dev)
+[![New Architecture](https://img.shields.io/badge/New%20Architecture-only-4630EB)](https://reactnative.dev/docs/the-new-architecture/landing-page)
 
-Built in production for **[Daily Bible - Offline & Audio](https://dailybiblenow.com)** — not a demo toy, a player that has to survive real users, real OEMs, and real background sessions.
+Lock screen. Notification. Bluetooth remotes. A real playlist — not a single URL. Native silence gaps. Optional speech + ambient on one native owner.
+
+Built in production for **[Daily Bible - Offline & Audio](https://dailybiblenow.com)** — the Bible app that has to keep playing when the phone is in a pocket, the screen is off, and the next verse is already in the queue.
 
 | | |
 | --- | --- |
@@ -14,215 +18,31 @@ Built in production for **[Daily Bible - Offline & Audio](https://dailybiblenow.
 
 ---
 
-## Why this player
+## Built for
 
-Most React Native audio stacks were born as **music apps**: heavyweight session models, optional Expo as an afterthought, and features you pay for in complexity whether you need them or not.
+**Edge-native TTS & narration.** Progressive queue append at verse or chapter scale. Silence as a first-class track. Pitch-preserving `setRate`. HLS with seek-after-ready. This is the player layer your on-device TTS pipeline plugs into — you generate URLs; we play them in the background.
 
-**daily-react-native-player** flips that.
+**Music & playlist apps.** A real queue: add, insert, remove, skip while audio keeps going. Lock-screen and headset remotes. Now Playing artwork. Continue-after-kill when you want the session to survive.
 
-| You get | Why it matters |
-| --- | --- |
-| **Speech playlist, not a single URL** | Load a chapter of verses (or a whole lesson) as a real queue — append, insert, remove, skip — while audio keeps playing |
-| **Lock screen, notification & Bluetooth control** | Play / pause / stop / next / previous from the lock screen, media notification, Control Center, wired & Bluetooth headsets, car decks — without keeping the app open |
-| **Your policy on remotes** | Hardware buttons emit to JS via `registerPlaybackService` — Bible maps Next to the next *verse*, not a dumb playlist index |
-| **Expo-first + config plugin** | Continuous prebuild / CNG hosts get iOS audio background mode and Android `mediaPlayback` FGS wired at `prebuild` — not a checklist of manual native edits |
-| **New Architecture only** | No legacy bridge tax. Built for Expo SDK 57+ / RN 0.86+ |
-| **Background is P0, not a footnote** | Screen-off playback, full now-playing artifacts (title, artist, album, artwork), continue-after-kill — device-verified before we call it done |
-| **One native audio owner** | Media3 (Android) + AVFoundation (iOS). No second focus-owning library bolted on for “ambient” |
-| **Events your UI can trust** | Active track, state, progress, queue ended, errors — same stack that powers remotes |
-| **Variable narration speed** | `setRate` with pitch preserved; silence gaps stay at 1× so verse pauses are not stretched |
-| **Ambient when you want it** | Lazy dual-audio under speech: never requests focus, never steals Now Playing; speech-only apps never pay the cost |
-| **Formats that ship** | Local + remote **WAV**, **mp3**, **m4a**, other platform progressive codecs; **HLS** with seek-after-ready |
-| **MIT, no license drama** | Use it in commercial apps. Fork it. Ship it. |
+**[Daily Bible - Offline & Audio](https://dailybiblenow.com).** Flagship host. Speech playlist plus an ambient bed that never steals Now Playing and never requests audio focus.
 
-If your app talks, reads scripture, teaches, or streams spoken content in the background — this is the player you wish existed years ago.
+If your app talks, sings, teaches, or streams in the background on Expo — this is the engine.
 
 ---
 
-## Feature highlights
+## Features
 
-### Lock screen, notification & Bluetooth remotes (P0 — shipped)
-
-Users do not live inside your React tree. They control audio from the **lock screen**, the **media notification**, **Control Center / Dynamic Island**, and **Bluetooth / wired headsets** (and car decks that speak MediaSession / MPRemoteCommandCenter).
-
-That stack is **non-negotiable** here — the same path Daily Bible relies on in the wild:
-
-| Surface | What users get |
-| --- | --- |
-| Lock screen | Play, pause, stop, next, previous + title / artist / album / artwork |
-| Notification shade (Android) | Same controls while the phone is in a pocket |
-| Headsets & Bluetooth | Play/pause, next/previous from the buds or car without unlocking |
-| Screen off / background | Audio keeps going; Android FGS `mediaPlayback` + iOS audio background mode |
-| App killed (configurable) | `ContinuePlayback` keeps the session alive (Bible default) |
-
-Remotes are **emit-only to JavaScript** via `registerPlaybackService` (headless on Android). Your service decides policy — e.g. Next means next *verse*, not “whatever Media3 thinks”:
-
-```ts
-// index.ts — before registerRootComponent
-registerPlaybackService(() => async () => {
-  addEventListener(Event.RemotePlay, () => void play());
-  addEventListener(Event.RemotePause, () => void pause());
-  addEventListener(Event.RemoteNext, () => void skipToNext()); // or your verse logic
-  addEventListener(Event.RemotePrevious, () => void skipToPrevious());
-});
-```
-
-Full now-playing metadata (forced overrides when raw WAV tags lie), seek scrubber stays native. Config plugin injects the FGS / `UIBackgroundModes` wiring at prebuild.
-
-Deep dive: [`docs/background-playback.md`](./docs/background-playback.md) · API remotes: [`docs/api.md`](./docs/api.md)
-
-### Multi-track speech playlist (shipped)
-
-This is the heart of a narration app: **not** one file at a time, but a **playlist of speech tracks** that auto-advances, accepts appends mid-play, and tells your React tree what changed.
-
-```ts
-await setupPlayer({ progressUpdateEventInterval: 1 });
-
-await add([
-  { url: verse1, title: 'Genesis 1:1' },
-  { url: verse2, title: 'Genesis 1:2' },
-  { url: verse3, title: 'Genesis 1:3' },
-]);
-
-addEventListener(Event.PlaybackActiveTrackChanged, ({ index, track }) => {
-  // Sync “now reading” UI
-});
-
-await play();
-await skipToNext();
-```
-
-- **Add / insert / remove / skip** with stable track `id`s  
-- **Playback\* events** — active track, state, ~1s progress, queue ended, errors  
-- **Lock-screen / Bluetooth Next/Previous** → JS → you call `skip*` (product logic stays yours)  
-- Built for **chapter-scale** queues (native prepare window)
-
-Deep dive: [`docs/queue.md`](./docs/queue.md) · API: [`docs/api.md`](./docs/api.md)
-
-### Playback rate (`setRate`)
-
-**Why:** narration apps need controllable speed without chipmunk pitch or stretched verse gaps.
-
-```ts
-import { setRate, play } from 'daily-react-native-player';
-
-await setRate(1.25); // engine accepts 0.25…4.0; clamp product UX in the app
-await play();
-// Silence tracks auto-play at 1×; desired rate restores on the next speech item
-```
-
-- **Pitch-preserving** on both platforms  
-- Survives progressive **add / remove / skip**  
-- `reset()` restores rate to **1.0** and re-applies player options  
-
-API: [`docs/api.md`](./docs/api.md) · Silence policy: [`docs/silence-tracks.md`](./docs/silence-tracks.md)
-
-### Silence tracks (core, not a hack)
-
-**Why:** exact-duration gaps as real queue items (skip, progress, remotes, `isSilenceTrack`) instead of fragile timers.  
-**When:** between speech items (verse/chapter pauses); ambient loop-all gaps ([`dual-audio.md`](./docs/dual-audio.md)).
-
-```ts
-import { add, createSilenceTrack, isSilenceTrack, play } from 'daily-react-native-player';
-
-await add([
-  { url: speechA, title: 'Verse 1' },
-  createSilenceTrack({ durationMs: 800 }),
-  { url: speechB, title: 'Verse 2' },
-]);
-await play();
-
-// Optional UI: isSilenceTrack(active) — rate 1× on silence is native-owned
-```
-
-Native-owned — Android `SilenceMediaSource`, iOS cached PCM WAV (22050 Hz mono 16-bit). No host filesystem dependency.
-
-Deep dive: [`docs/silence-tracks.md`](./docs/silence-tracks.md)
-
-### Ambient dual-audio (opt-in)
-
-**Why:** bed music under speech for Bible-style listening; lock screen still shows **speech**; speech-only apps never create the second player.
-
-```ts
-await ambientSetPlaylist([bedUrl], true); // loop-all; silence: urls OK for gaps
-await ambientSetVolume(0);
-await ambientPlay();
-await ambientFade(0.35, 1500);
-// speech queue / play as usual — remotes still control speech only
-```
-
-- **Lazy init** — second player exists only after the first ambient API  
-- Fade / volume / loop-one vs loop-all  
-- Mix mode `androidAudioMixMode: 'default' | 'duckOthers'`  
-- Never requests focus / never owns Now Playing; survives speech `reset`  
-
-Deep dive: [`docs/dual-audio.md`](./docs/dual-audio.md)
-
-### Progressive + HLS
-
-**Why:** local files, CDN progressive audio, and chapter HLS from the same queue — including seek before the stream is ready.
-
-```ts
-await add({
-  url: 'https://cdn.example.com/genesis-1.m3u8',
-  type: 'hls', // preferred; .m3u8 path also auto-tags as hls
-  title: 'Genesis 1',
-});
-await seekTo(30); // stashed until READY, then applied (VOD)
-await play();
-```
-
-- Progressive: **WAV**, **mp3**, **m4a** (AAC), plus other Media3 / AVFoundation codecs  
-- Adaptive: **HLS VOD** with seek-after-ready (pending seek cleared on skip/reset)  
-- Explicitly out of v0.1: live DVR, DASH, SmoothStreaming, Cast, Android Auto browse, web player  
-
-API: [`docs/api.md`](./docs/api.md)
-
----
-
-## Status
-
-**Hardening (T11) is in the package:** setup coalesce + 10s timeout, FGS sync promotion, reset play-intent-first, contracts docs, pack hygiene, CI `assembleRelease`. **Physical device sign-off** on the P0 matrices in [`docs/background-playback.md`](./docs/background-playback.md) is still required before claiming Bible-ready 0.1.0 / marking T4+T11 fully done.
-
-| Area | Status |
-| --- | --- |
-| Expo module + example app | Done (New Arch) |
-| Config plugin (iOS audio BG + Android FGS) | Done (T2) |
-| Local WAV + progressive mp3 / m4a | Done (T3) |
-| **Lock screen / notification / Now Playing session** | **Code complete (T4)** — device QA pending |
-| **`registerPlaybackService` + Remote\* → JS (headsets & lock screen)** | **Done (T5)** — device QA pending |
-| **Multi-track playlist + Playback\* events** | **Done (T6)** |
-| **Silence tracks** | **Done (T7)** |
-| **Playback rate / progressive mutation** | **Done (T8)** |
-| **HLS + seek-after-ready** | **Done (T9)** |
-| **Ambient dual-audio** | **Done (T10)** |
-| **Hardening + publish packaging (T11/T12)** | **Code/docs complete** — physical P0 QA pending |
-
-See [`ROADMAP.md`](./ROADMAP.md). Star the repo and watch releases if you want the first Bible-ready cut.
-
----
-
-## Who it’s for
-
-- **Expo / CNG apps** that need background audio without hand-maintaining native projects  
-- **Speech & narration** products (Bible, meditation, language learning, audiobooks, courses) that need a **real playlist** *and* lock-screen / Bluetooth control  
-- Teams who want **MediaSession / Now Playing done right** — without MediaLibrary / Auto / Cast bloat  
-- Anyone who needs **MIT** background audio with a clear acceptance matrix ([`docs/bible-acceptance.md`](./docs/bible-acceptance.md))
-
-## Who should look elsewhere (for now)
-
-- Old Architecture / legacy bridge hosts  
-- Apps that need Android Auto browse trees, Cast, DASH, or a web player in v0.1  
-- Pure in-app UI sound effects with no background / remotes requirement
-
----
-
-## Requirements
-
-- **New Architecture** only (mandatory on Expo SDK 57+)
-- **Expo SDK 57+** (Expo Modules Core required) / React Native **0.86+** (primary host: Daily Bible - Offline & Audio)
-- Hosts on Expo &lt;57 must upgrade the app before installing this package
-- iOS + Android (web transport unsupported)
+- **Lock screen, notification, Control Center, Bluetooth** — play / pause / stop / next / previous from the surfaces users actually touch
+- **`registerPlaybackService`** — remotes emit to JS; Next can mean next *verse* or next *song*. Policy stays yours
+- **Multi-track playlist** — append mid-playback; stable track ids; Playback\* events your UI can trust
+- **HLS VOD** — plus WAV, mp3, m4a; seek before the stream is ready
+- **Native silence tracks** — exact-duration gaps as queue items, not timers (`SilenceMediaSource` / cached PCM WAV)
+- **Optional ambient dual-audio** — lazy init; never requests focus; never owns Now Playing
+- **Expo config plugin** — iOS audio background mode + Android `mediaPlayback` FGS at prebuild
+- **New Architecture only** — Media3 (Android) + AVFoundation (iOS). One native audio owner
+- **Pitch-preserving `setRate`** — silence stays at 1× so pauses are not stretched
+- **Production hardening** — setup coalesce + timeout, FGS sync promotion, reset play-intent-first
+- **MIT** — commercial use. No license gate. Fork it. Ship it.
 
 ---
 
@@ -232,37 +52,6 @@ See [`ROADMAP.md`](./ROADMAP.md). Star the repo and watch releases if you want t
 npx expo install daily-react-native-player
 ```
 
-```ts
-// index.ts — remotes require registerPlaybackService before root
-import {
-  registerPlaybackService,
-  setupPlayer,
-  add,
-  play,
-  Event,
-  addEventListener,
-} from 'daily-react-native-player';
-import { registerRootComponent } from 'expo';
-import App from './App';
-import { playbackService } from './playbackService';
-
-registerPlaybackService(() => playbackService);
-registerRootComponent(App);
-
-// Later in app code:
-await setupPlayer();
-await add([
-  { url: 'https://example.com/a.mp3', title: 'Track 1' },
-  { url: 'https://example.com/b.mp3', title: 'Track 2' },
-]);
-addEventListener(Event.PlaybackActiveTrackChanged, ({ track }) => {
-  console.log('now playing', track?.title);
-});
-await play();
-```
-
-Add the config plugin so prebuild injects iOS `audio` background mode and Android media foreground-service permissions / `MediaSessionService`:
-
 ```json
 {
   "expo": {
@@ -271,40 +60,82 @@ Add the config plugin so prebuild injects iOS `audio` background mode and Androi
 }
 ```
 
-Optional: `{ "enableBackgroundPlayback": false }` disables those injections. See [`docs/background-playback.md`](./docs/background-playback.md) for bare-workflow XML and the Android 13+ `POST_NOTIFICATIONS` runtime requirement.
+**Peers:** Expo SDK **57+** / React Native **0.86+**. New Architecture only. iOS + Android (no web player).
+
+```ts
+// index.ts — remotes require registerPlaybackService before root
+import {
+  registerPlaybackService,
+  setupPlayer,
+  add,
+  play,
+  pause,
+  skipToNext,
+  skipToPrevious,
+  Event,
+  addEventListener,
+} from 'daily-react-native-player';
+import { registerRootComponent } from 'expo';
+import App from './App';
+
+registerPlaybackService(() => async () => {
+  addEventListener(Event.RemotePlay, () => void play());
+  addEventListener(Event.RemotePause, () => void pause());
+  addEventListener(Event.RemoteNext, () => void skipToNext());
+  addEventListener(Event.RemotePrevious, () => void skipToPrevious());
+});
+registerRootComponent(App);
+
+// Later:
+await setupPlayer({ progressUpdateEventInterval: 1 });
+await add([
+  { url: 'https://example.com/a.mp3', title: 'Track 1', artist: 'Daily Bible' },
+  { url: 'https://example.com/b.mp3', title: 'Track 2' },
+]);
+addEventListener(Event.PlaybackActiveTrackChanged, ({ track }) => {
+  console.log('now playing', track?.title);
+});
+await play();
+```
+
+Optional: `{ "enableBackgroundPlayback": false }` skips native injections. Android 13+ still needs `POST_NOTIFICATIONS` at runtime — see [background playback](https://github.com/coommark/daily-react-native-player/blob/main/docs/background-playback.md).
 
 ---
 
-## Develop locally
+## Shipped in 0.1.0
 
-```bash
-yarn
-yarn build
-# while editing the package TS: npx tsc --watch
-cd example
-yarn start
-```
+| Capability | Status |
+| --- | --- |
+| Lock screen / notification / Now Playing | **Done** |
+| `registerPlaybackService` + Remote\* → JS | **Done** |
+| Multi-track playlist + Playback\* events | **Done** |
+| Silence tracks · HLS · Ambient · Hardening (T11/T12) | **Done** |
 
-Run on devices with `yarn ios` / `yarn android` from `example/` (dev client / prebuild).  
-The example includes **Load multi-track queue**, skip next/previous, and remotes → `skip*`.  
-**Emulators lie about audio.** Physical Android (including low-end) + physical iOS are the bar for **lock screen, notification, Bluetooth remotes, and background**.
+---
+
+## Who should look elsewhere (for now)
+
+- Old Architecture / legacy bridge hosts
+- Apps that need Android Auto browse, Cast, DASH, or a web player in v0.1
+- Pure in-app UI sound effects with no background or remotes
 
 ---
 
 ## Documentation
 
-- [Getting started](./docs/getting-started.md)
-- [**Runtime contracts / SLAs**](./docs/contracts.md)
-- [**Background playback & remotes (P0)**](./docs/background-playback.md) — lock screen, notification, Bluetooth, Now Playing, `registerPlaybackService`
-- [**Speech queue / playlist**](./docs/queue.md) — multi-track API, events, remotes → skip*
-- [Architecture](./docs/architecture.md) — ADRs (Expo Module, MediaSessionService, queue, silence, ambient)
-- [API](./docs/api.md)
-- [Silence tracks](./docs/silence-tracks.md)
-- [Dual audio / ambient](./docs/dual-audio.md)
-- [Bible acceptance matrix](./docs/bible-acceptance.md)
-- [Contributing](./docs/contributing.md)
-- [Changelog](./CHANGELOG.md)
-- [Security](./SECURITY.md)
+- [Getting started](https://github.com/coommark/daily-react-native-player/blob/main/docs/getting-started.md)
+- [Background playback & remotes](https://github.com/coommark/daily-react-native-player/blob/main/docs/background-playback.md)
+- [Speech queue / playlist](https://github.com/coommark/daily-react-native-player/blob/main/docs/queue.md)
+- [API](https://github.com/coommark/daily-react-native-player/blob/main/docs/api.md)
+- [Silence tracks](https://github.com/coommark/daily-react-native-player/blob/main/docs/silence-tracks.md)
+- [Dual audio / ambient](https://github.com/coommark/daily-react-native-player/blob/main/docs/dual-audio.md)
+- [Runtime contracts](https://github.com/coommark/daily-react-native-player/blob/main/docs/contracts.md)
+- [Architecture](https://github.com/coommark/daily-react-native-player/blob/main/docs/architecture.md)
+- [Bible acceptance](https://github.com/coommark/daily-react-native-player/blob/main/docs/bible-acceptance.md)
+- [Contributing](https://github.com/coommark/daily-react-native-player/blob/main/docs/contributing.md)
+- [Changelog](https://github.com/coommark/daily-react-native-player/blob/main/CHANGELOG.md)
+
+Local development: `yarn && yarn build`, then `cd example && yarn start`. Physical devices are the bar for lock screen, notification, and Bluetooth remotes.
 
 ---
 
@@ -312,8 +143,8 @@ The example includes **Load multi-track queue**, skip next/previous, and remotes
 
 **MIT** — see [LICENSE](./LICENSE). Ship commercially. Contribute freely.
 
-Built for [Daily Bible - Offline & Audio](https://dailybiblenow.com)  
+Built for **[Daily Bible - Offline & Audio](https://dailybiblenow.com)**
 ([Google Play](https://play.google.com/store/apps/details?id=com.coommark.dailybible) ·
 [App Store](https://apps.apple.com/us/app/daily-bible-offline-audio/id6754987448)).
 
-**Background audio that respects Expo, speech playlists, lock screens, and Bluetooth remotes.**
+Star the repo. Watch releases. Put background audio on Expo the way Daily Bible ships it.

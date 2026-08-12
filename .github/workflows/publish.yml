@@ -1,0 +1,72 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: >
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip publish]'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13'
+          cache: yarn
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install
+        run: yarn install --frozen-lockfile
+
+      - name: Build
+        run: yarn build
+
+      - name: Test
+        run: yarn test
+
+      - name: Pack check
+        run: yarn pack:check
+
+      - name: Publish if version is new
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "package.json version: ${VERSION}"
+
+          PUBLISHED="$(npm view daily-react-native-player version 2>/dev/null || true)"
+          if [ -z "${PUBLISHED}" ]; then
+            echo "Package not on npm yet — publishing ${VERSION}"
+          elif [ "${PUBLISHED}" = "${VERSION}" ]; then
+            echo "daily-react-native-player@${VERSION} is already on npm — skipping"
+            exit 0
+          else
+            echo "npm latest is ${PUBLISHED}; publishing ${VERSION}"
+          fi
+
+          npm publish --provenance --access public
+
+          TAG="v${VERSION}"
+          if git rev-parse "${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists — skipping tag push"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${TAG}"
+          git push origin "${TAG}"
+          echo "Published and tagged ${TAG}"

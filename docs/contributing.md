@@ -2,10 +2,9 @@
 
 ## Basics
 
-1. Read [`.cursorrules`](../.cursorrules) and [`AGENTS.md`](../AGENTS.md)
-2. Pick the next ticket from [`ROADMAP.md`](../ROADMAP.md)
-3. Keep diffs minimal; leave tests green
-4. Update docs + ROADMAP checkboxes in the same PR / change set
+1. Read [`AGENTS.md`](../AGENTS.md) and pick the next ticket from [`ROADMAP.md`](../ROADMAP.md)
+2. Keep diffs minimal; leave tests green
+3. Update docs + ROADMAP checkboxes in the same PR / change set
 
 This package is developed **primarily for [Daily Bible - Offline & Audio](https://dailybiblenow.com)**
 ([Google Play](https://play.google.com/store/apps/details?id=com.coommark.dailybible) ·
@@ -52,6 +51,39 @@ npx skills@latest add expo/skills --skill 'expo-module'
 | **0.x semver** | Breaking changes may ship in 0.x with a CHANGELOG entry — **pin** your dependency |
 
 Docs live on GitHub (`docs/`); the npm tarball ships README + LICENSE + CHANGELOG only.
+
+## Branching & releases
+
+This repo uses **GitHub Flow**: `main` is the only long-lived branch. npm publishes from `main` only when `package.json` version is new on the registry.
+
+| Branch | Role |
+| --- | --- |
+| **`main`** | Source of truth. Always deployable. Protected: PR required, CI must pass. |
+| **`feat/*`, `fix/*`, `docs/*`, `chore/*`** | Short-lived topic branches. Always branch from latest `main`. Delete after merge. |
+
+There is no permanent `develop` branch. Feature PRs merge to `main` without a version bump and **do not** publish.
+
+### Day to day
+
+1. `git checkout main && git pull && git checkout -b feat/your-change`
+2. Open a PR to `main`. CI runs lint, test, build, pack-check, and Android release assemble.
+3. Merge when green. **Do not** bump version in feature or fix PRs.
+4. Repeat. npm stays on the last published version until a Release PR.
+
+External contributors: fork → branch from `main` → PR back to `main`. Same rules.
+
+### Releasing (triggers npm)
+
+When `main` has enough changes:
+
+1. Open a **Release PR** (title e.g. `Release 0.1.1`):
+   - Bump version in lockstep: `package.json`, `ios/DailyReactNativePlayer.podspec`, `android/build.gradle` (`yarn pack:check` enforces this)
+   - Update [`CHANGELOG.md`](../CHANGELOG.md)
+   - Keep feature code out of the Release PR when possible
+2. Merge to `main`. CI publishes if that version is not on npm, then tags `vX.Y.Z`.
+3. Escape hatch: include `[skip publish]` in the merge commit message to skip the publish job.
+
+**0.x semver:** patch = bug fixes / docs / hardening; minor = new API; `1.0.0` = stable API promise. Breaking changes may ship in 0.x with a CHANGELOG entry — hosts should pin.
 
 ## Test matrix
 
